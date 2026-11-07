@@ -160,3 +160,4 @@ curl -H "X-API-Key: $KEY" "localhost:8000/api/v1/processing/jobs?status_filter=n
 curl -X POST -H "X-API-Key: $KEY" localhost:8000/api/v1/content/<id>/reprocess
 ```
 Or in Docker: `INSTABRAIN_COPILOT_GITHUB_TOKEN=... docker compose --profile pipeline up -d`.
+- Architecture diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
