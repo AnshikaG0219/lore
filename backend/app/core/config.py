@@ -7,7 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="INSTABRAIN_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="INSTABRAIN_", env_file=".env", extra="ignore",
+                                      frozen=True)
 
     env: str = "development"
     database_url: str = "postgresql+psycopg://instabrain:instabrain@localhost:5432/instabrain"
@@ -30,12 +31,29 @@ class Settings(BaseSettings):
     # Unacked tasks are redelivered after this; must exceed the longest import.
     broker_visibility_timeout_seconds: int = Field(default=6 * 3600, gt=0)
 
+    # Media processing (Phase 2)
+    max_media_bytes: int = Field(default=500 * 1024**2, gt=0)
+    ocr_languages: str = "eng+hin"
+    ocr_min_word_confidence: float = Field(default=40.0, ge=0, le=100)
+    frame_interval_seconds: float = Field(default=2.0, gt=0)
+    max_frames_per_video: int = Field(default=45, gt=0)
+    whisper_model: str = "small"
+    whisper_compute_type: str = "int8"
+    whisper_device: str = "cpu"
+    copilot_model: str = "claude-haiku-5.5"
+    # GitHub token with Copilot access, used by the extraction task. Never logged.
+    copilot_github_token: SecretStr | None = None
+
     log_level: str = "INFO"
     log_json: bool = False
 
     @property
     def uploads_dir(self) -> Path:
         return self.data_dir / "uploads"
+
+    @property
+    def media_dir(self) -> Path:
+        return self.data_dir / "media"
 
 
 @lru_cache

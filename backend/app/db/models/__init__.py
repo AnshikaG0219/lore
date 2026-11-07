@@ -175,3 +175,66 @@ class AuditLog(UUIDPk, Base):
     action: Mapped[str] = mapped_column(String(64))
     details: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MediaAsset(UUIDPk, Base):
+    """A media file (image/video/audio) attached to a content item, e.g. a user upload."""
+
+    __tablename__ = "media_assets"
+    __table_args__ = (UniqueConstraint("content_id", "checksum"),)
+
+    content_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_items.id", ondelete="CASCADE"), index=True
+    )
+    asset_type: Mapped[str] = mapped_column(String(16))  # image | video | audio
+    source: Mapped[str] = mapped_column(String(32), default="manual_upload")
+    position: Mapped[int] = mapped_column(Integer, default=0)  # carousel / upload order
+    storage_path: Mapped[str] = mapped_column(Text)
+    original_filename: Mapped[str | None] = mapped_column(Text)
+    mime_type: Mapped[str] = mapped_column(String(64))
+    file_size: Mapped[int] = mapped_column(BigInteger)
+    checksum: Mapped[str] = mapped_column(String(64), index=True)
+    processing_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    meta: Mapped[dict[str, Any]] = mapped_column("metadata", default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Transcript(UUIDPk, Base):
+    __tablename__ = "transcripts"
+    __table_args__ = (UniqueConstraint("media_asset_id", "provider", "model"),)
+
+    content_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_items.id", ondelete="CASCADE"), index=True
+    )
+    media_asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), index=True
+    )
+    language: Mapped[str | None] = mapped_column(String(16))
+    language_probability: Mapped[float | None] = mapped_column(Float)
+    transcript_text: Mapped[str] = mapped_column(Text, default="")
+    timestamped_segments: Mapped[list[Any]] = mapped_column(default=list)
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OcrText(UUIDPk, Base):
+    """Text read from an image, or from one sampled video frame (``frame_time`` seconds)."""
+
+    __tablename__ = "ocr_texts"
+    __table_args__ = (UniqueConstraint("media_asset_id", "frame_time", "engine"),)
+
+    content_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_items.id", ondelete="CASCADE"), index=True
+    )
+    media_asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), index=True
+    )
+    frame_time: Mapped[float] = mapped_column(Float, default=-1.0)  # -1 = still image
+    text: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float | None] = mapped_column(Float)
+    engine: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

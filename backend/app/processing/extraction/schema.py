@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-PROMPT_VERSION = "caption-extraction.v2"
+PROMPT_VERSION = "content-extraction.v3"
 
 
 class Category(enum.StrEnum):

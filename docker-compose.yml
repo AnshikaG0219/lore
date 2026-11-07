@@ -11,6 +11,7 @@ x-backend: &backend
     INSTABRAIN_TASK_BACKEND: celery
   volumes:
     - importdata:/data
+    - models:/models
   depends_on:
     postgres:
       condition: service_healthy
@@ -75,6 +76,17 @@ services:
     stop_grace_period: 60s
     restart: unless-stopped
 
+  media-worker:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # OCR + Whisper are CPU-heavy; keep them off the import queue. One process per CPU-bound job.
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO",
+              "--concurrency=1", "-Q", "instabrain.media", "-n", "media@%h"]
+    stop_grace_period: 120s
+    restart: unless-stopped
+
   beat:
     <<: *backend
     depends_on:
@@ -85,6 +97,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  models:
   pgdata:
   redisdata:
   importdata:

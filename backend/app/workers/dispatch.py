@@ -26,6 +26,8 @@ class DispatchError(Exception):
 class ImportDispatcher(Protocol):
     def enqueue_import(self, batch_id: uuid.UUID) -> None: ...
 
+    def enqueue_media(self, asset_id: uuid.UUID) -> None: ...
+
     def is_healthy(self) -> bool: ...
 
 
@@ -39,6 +41,14 @@ class CeleryImportDispatcher:
         try:
             run_import_task.apply_async(args=[str(batch_id)], retry=False)
         except Exception as exc:  # broker unreachable; the periodic sweep will pick it up
+            raise DispatchError(str(exc)) from exc
+
+    def enqueue_media(self, asset_id: uuid.UUID) -> None:
+        from app.workers.media_tasks import process_media_task
+
+        try:
+            process_media_task.apply_async(args=[str(asset_id)], retry=False)
+        except Exception as exc:
             raise DispatchError(str(exc)) from exc
 
     def is_healthy(self) -> bool:
@@ -63,6 +73,14 @@ class InlineImportDispatcher:
                        stale_after=timedelta(seconds=self.settings.import_heartbeat_stale_seconds))
         except ImportInProgressError:
             log.warning("import_already_running", extra={"batch_id": str(batch_id)})
+
+    def enqueue_media(self, asset_id: uuid.UUID) -> None:
+        from app.processing.media.engines import build_engines, build_store
+        from app.processing.media.pipeline import process_asset
+
+        with self.session_factory() as session:
+            process_asset(session, asset_id, build_engines(self.settings),
+                          build_store(self.settings))
 
     def is_healthy(self) -> bool:
         return True

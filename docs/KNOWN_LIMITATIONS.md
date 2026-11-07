@@ -55,3 +55,18 @@ Group vs direct detection uses `participants > 2` (in the real export this match
 - Uploaded archives are kept in `INSTABRAIN_DATA_DIR/uploads`; no retention/cleanup policy yet.
 - pgvector extension is not enabled yet (Phase 6). `media_assets`, `transcripts`, `content_chunks`
   tables are deferred to the phases that use them.
+
+## Media, OCR and transcription
+- **Saved-post media is not in the Instagram export**, and the app does not download it from
+  Instagram. Media must be uploaded by the user (screen recordings, screenshots, saved videos).
+- Whisper mis-spells rare proper nouns (e.g. "Pangong" → "Pangond"). Extraction prefers on-screen
+  text for names, but spoken-only names may be wrong.
+- Tesseract struggles with decorative fonts, curved text and text on busy photos. It doesn't
+  describe non-text images; that needs a vision model.
+- Hindi OCR is enabled. Whisper detects language automatically. Hinglish (romanised Hindi) is
+  transcribed with variable quality.
+- `small` Whisper on CPU runs at roughly real time or faster on Apple Silicon. It's slower in Docker
+  on amd64 or under emulation. The model (~480 MB) downloads once into the `models` volume.
+- Automatic extraction after media processing needs the Copilot runtime. The Docker image doesn't
+  include the Copilot CLI yet, so in Docker media processing works but extraction must run on the
+  host (`scripts/add_media.py --extract` or `scripts/extract_captions.py`).

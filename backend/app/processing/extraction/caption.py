@@ -1,7 +1,8 @@
-"""Caption-only classification + structured extraction (Phase 2, step 1).
+"""Classification + structured extraction from caption and media text (Phase 2).
 
-Input sent to the provider is limited to post content: caption, hashtags, creator, content type
-and the user's own collection names. Chat names, senders and message text are never sent.
+Input sent to the provider is limited to post content: caption, hashtags, creator, content type,
+the user's own collection names, and text derived from attached media (OCR of images/frames and
+the spoken transcript). Chat names, senders and message text are never sent.
 """
 
 from __future__ import annotations
@@ -36,6 +37,11 @@ Hard rules:
   recommendations. If something is not stated, use null or an empty list.
 - Mark every entity/place/book/product with "evidence": "explicit" if it is written in the input,
   or "inferred" if you derived it (e.g. a city implied by hashtags). Prefer explicit.
+- Sources are labelled: "caption" (written by the creator), "on_screen_text" (OCR of images or
+  video frames; may contain OCR noise or misspellings, so ignore garbled fragments and never
+  "correct" a name into a different one), and "spoken_transcript" (speech-to-text, which may
+  contain mis-heard words). Prefer facts confirmed by several sources. If they conflict, prefer
+  the on-screen text for names and spellings and mention the conflict in the summary.
 - The caption may not describe the video. If the caption alone does not reveal the actual content
   (e.g. "wait for it", only hashtags, emojis), set "information_sufficient": false, keep the
   summary honest about that, and lower "confidence".
@@ -73,6 +79,15 @@ class ExtractionInput:
     caption: str
     hashtags: list[str] = field(default_factory=list)
     collections: list[str] = field(default_factory=list)
+    on_screen_text: str = ""
+    spoken_transcript: str = ""
+    transcript_language: str | None = None
+
+    @property
+    def sources(self) -> list[str]:
+        return [name for name, value in (("caption", self.caption),
+                                         ("on_screen_text", self.on_screen_text),
+                                         ("spoken_transcript", self.spoken_transcript)) if value]
 
     def prompt(self) -> str:
         payload = {
@@ -80,8 +95,13 @@ class ExtractionInput:
             "creator_username": self.creator,
             "user_collections": self.collections,
             "hashtags": self.hashtags,
-            "caption": self.caption[:MAX_CAPTION_CHARS],
+            "caption": self.caption[:MAX_CAPTION_CHARS] or None,
         }
+        if self.on_screen_text:
+            payload["on_screen_text"] = self.on_screen_text
+        if self.spoken_transcript:
+            payload["spoken_transcript"] = self.spoken_transcript
+            payload["transcript_language"] = self.transcript_language
         return ("Extract knowledge from this Instagram post.\n"
                 + json.dumps(payload, ensure_ascii=False, indent=1))
 
@@ -92,7 +112,11 @@ class ExtractionInput:
 
 
 def build_input(session: Session, item: ContentItem) -> ExtractionInput | None:
-    if not item.caption or not item.caption.strip():
+    from app.processing.media.pipeline import media_text_for
+
+    media = media_text_for(session, item.id)
+    caption = (item.caption or "").strip()
+    if not caption and not media.on_screen_text and not media.transcript:
         return None
     sources = session.scalars(
         select(ContentSource).where(ContentSource.content_id == item.id)
@@ -110,9 +134,12 @@ def build_input(session: Session, item: ContentItem) -> ExtractionInput | None:
         content_id=str(item.id),
         content_type=item.content_type,
         creator=item.creator_username,
-        caption=item.caption,
+        caption=caption,
         hashtags=hashtags[:30],
         collections=collections,
+        on_screen_text=media.on_screen_text,
+        spoken_transcript=media.transcript,
+        transcript_language=media.transcript_language,
     )
 
 
@@ -180,7 +207,7 @@ def persist_success(session: Session, item: ContentItem, inp: ExtractionInput,
         JOB_TYPE: {
             **ex.model_dump(mode="json"),
             "_meta": {
-                "source": "caption",
+                "source": "+".join(inp.sources),
                 "provider": result.completion.provider,
                 "model": result.completion.model,
                 "prompt_version": PROMPT_VERSION,
@@ -207,7 +234,7 @@ async def process_item(session: Session, item: ContentItem, provider: LLMProvide
     """Extract one item and commit. Never raises for provider/validation failures."""
     inp = build_input(session, item)
     if inp is None:
-        return {"content_id": str(item.id), "status": "skipped", "reason": "no caption"}
+        return {"content_id": str(item.id), "status": "skipped", "reason": "no caption or media"}
     if not force and is_up_to_date(item, inp):
         return {"content_id": str(item.id), "status": "skipped", "reason": "up to date"}
     started = datetime.now(UTC)

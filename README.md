@@ -121,3 +121,20 @@ backend/.venv/bin/python -m scripts.extract_captions --limit 5 --dry-run
 INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
   backend/.venv/bin/python -m scripts.extract_captions --limit 10 --model claude-haiku-5.5
 ```
+
+## Media: OCR + transcription
+
+Your Instagram export doesn't contain the images/videos of saved posts, so attach them yourself:
+
+```bash
+# screenshots of a carousel and/or a screen recording of a Reel
+backend/.venv/bin/python -m scripts.add_media https://www.instagram.com/p/DaDFMBdkjr0/ \
+    slide1.jpg slide2.jpg --process
+# …and re-run extraction with the new text
+INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
+  backend/.venv/bin/python -m scripts.add_media DaDFMBdkjr0 reel.mp4 --process --extract
+```
+
+Or via the API: `POST /api/v1/content/{id}/media` (multipart `files`) and
+`GET /api/v1/content/{id}/media`. Requires `ffmpeg` and `tesseract`
+(`brew install ffmpeg tesseract tesseract-lang`). The Docker image includes both.

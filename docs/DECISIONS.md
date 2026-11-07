@@ -130,3 +130,29 @@ output plus `_meta` (provider, model, prompt_version, input_hash, attempts) to
 `extracted_data.caption_extraction`. Each attempt writes a `processing_jobs` row. Re-running skips
 items whose input hash (which includes prompt_version) is unchanged. `processing_status` is not
 advanced yet, because caption extraction is only one stage and media stages remain.
+
+## ADR-020: Media comes from user uploads; OCR and transcription run locally
+**Context:** The real export contains **no media for saved posts** (`"media": []`). Its 763 media
+files are photos/videos sent in chats. Fetching Reels from Instagram would be scraping (PRD §13/§19).
+**Decision:**
+- Media is attached by the user (`POST /api/v1/content/{id}/media` or `scripts/add_media.py`).
+  Files are content-addressed under `INSTABRAIN_DATA_DIR/media/<content_id>/<sha256>.<ext>`, typed
+  by magic bytes (JPEG/PNG/WebP/HEIC, MP4/MOV, M4A/MP3/WAV), size-limited and never executed.
+  Re-uploading the same file is a no-op.
+- **OCR: Tesseract** (`eng+hin`), on greyscale images upscaled to at least 1000px. Words below
+  confidence 40 are dropped as noise.
+- **Transcription: faster-whisper** (`small`, CPU int8, VAD to skip music/silence), with language
+  detection and timestamped segments. Audio is extracted with ffmpeg to 16 kHz mono WAV and passed
+  to Whisper as samples, which bypasses PyAV (faster-whisper 1.2.1 calls a PyAV argument removed in
+  newer releases).
+- **Video frames:** one frame every 2s (max 45, spread over long videos) is OCR'd. Repeated overlay
+  lines are de-duplicated in reading order.
+- All local: no media or audio leaves the machine. Only derived text goes to the LLM.
+- Each step (OCR per frame, transcript per asset) commits separately and is skipped if present,
+  so failures keep partial results and retries never repeat work.
+- Media runs on its own queue `instabrain.media` (`media-worker`, concurrency 1) so CPU-heavy work
+  never delays imports. When all of an item's assets are done and a Copilot token is configured,
+  `instabrain.extraction.run` (queue `instabrain.ai`) re-extracts automatically.
+- Extraction prompt v3 labels `caption` / `on_screen_text` / `spoken_transcript` separately and
+  prefers on-screen text for names. Verified: speech "Herman Hesse" vs screen "Hermann Hesse"
+  resolved to the on-screen spelling.

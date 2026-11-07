@@ -73,8 +73,12 @@ Phase 1 parsing is verified, and the durable worker is done (ADR-016/017). **Pha
 | LLM provider interface + Copilot SDK provider | ✅ | ADR-018 |
 | Category-aware validated schema (16 categories, evidence per entity) | ✅ | `processing/extraction/schema.py` |
 | Caption classification + extraction | 🟡 | Trial: 10/10 succeeded (2 needed a retry), ~15 s/item, `claude-haiku-5.5` |
-| Run as Celery task over all captioned items | ⏳ | Currently `scripts/extract_captions.py` (foreground) |
-| Manual media upload, OCR, transcription, vision | ⏳ | Needed: 7/10 trial captions were insufficient |
+| Run as Celery task over all captioned items | 🟡 | Per-item task `instabrain.extraction.run` exists; bulk run still via `scripts/extract_captions.py` |
+| Manual media upload (API + CLI) | ✅ | ADR-020 |
+| Image OCR (Tesseract eng+hin) | ✅ | Real-engine test: slide text read at 0.97 confidence |
+| Video transcription (faster-whisper small) + frame OCR | ✅ | Real-engine test + Docker media-worker e2e |
+| Extraction from caption + on-screen text + transcript | ✅ | e2e: caption without titles + video → 3 books with authors, all explicit |
+| Vision-model image understanding | ⏳ | OCR covers text; non-text images (food, places) still need it |
 | Public metadata retrieval | ⏳ | |
 
 **Trial findings (10 items from 5 collections):** no fabricated entities. Thin captions were

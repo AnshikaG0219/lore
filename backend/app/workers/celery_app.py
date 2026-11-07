@@ -16,11 +16,14 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 
 IMPORT_QUEUE = "instabrain.imports"
+MEDIA_QUEUE = "instabrain.media"
+AI_QUEUE = "instabrain.ai"
 
 
 def create_celery() -> Celery:
     settings = get_settings()
-    app = Celery("instabrain", broker=settings.redis_url, include=["app.workers.tasks"])
+    app = Celery("instabrain", broker=settings.redis_url,
+                 include=["app.workers.tasks", "app.workers.media_tasks"])
     app.conf.update(
         task_acks_late=True,
         task_reject_on_worker_lost=True,
@@ -29,6 +32,10 @@ def create_celery() -> Celery:
         task_serializer="json",
         accept_content=["json"],
         task_default_queue=IMPORT_QUEUE,
+        task_routes={
+            "instabrain.media.*": {"queue": MEDIA_QUEUE},
+            "instabrain.extraction.*": {"queue": AI_QUEUE},
+        },
         broker_connection_retry_on_startup=True,
         broker_transport_options={
             "visibility_timeout": settings.broker_visibility_timeout_seconds
