@@ -66,7 +66,23 @@ Phase 1 parsing is verified, and the durable worker is done (ADR-016/017). **Pha
 | Partial results are retained | ✅ Per-file commits |
 | Errors are logged | ✅ Structured logs (`INSTABRAIN_LOG_JSON=true` for JSON) |
 
-## Phase 2 — Content Extraction Pipeline ⏳
+## Phase 2 — Content Extraction Pipeline 🟡 (started 2026-11-07)
+
+| Step | Status | Notes |
+|---|---|---|
+| LLM provider interface + Copilot SDK provider | ✅ | ADR-018 |
+| Category-aware validated schema (16 categories, evidence per entity) | ✅ | `processing/extraction/schema.py` |
+| Caption classification + extraction | 🟡 | Trial: 10/10 succeeded (2 needed a retry), ~15 s/item, `claude-haiku-5.5` |
+| Run as Celery task over all captioned items | ⏳ | Currently `scripts/extract_captions.py` (foreground) |
+| Manual media upload, OCR, transcription, vision | ⏳ | Needed: 7/10 trial captions were insufficient |
+| Public metadata retrieval | ⏳ | |
+
+**Trial findings (10 items from 5 collections):** no fabricated entities. Thin captions were
+correctly flagged `information_sufficient=false` with confidence 0.4. Explicit data extracted well
+(a book with author, 7 venues with sectors, 5 local products). The model added generic "tips" not
+in the post, so prompt v2 forbids that (**v2 not yet re-validated on live model**). Main lesson:
+most list posts ("5 books…", "new cafés…") keep the actual list in images/video, so OCR and
+transcription are essential, not optional.
 ## Phase 3 — Notion Integration ⏳
 ## Phase 4 — Continuous Capture ⏳
 ## Phase 5 — Dashboard ⏳

@@ -7,3 +7,4 @@ alembic>=1.13,<2
 psycopg[binary]>=3.2,<4
 python-multipart>=0.0.9
 celery[redis]>=5.4,<6
+github-copilot-sdk>=1.0.29,<2

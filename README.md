@@ -111,3 +111,13 @@ scripts/             inspect_instagram_export.py, import_instagram_export.py
 Tested against a real JSON export from 2026-11. See `docs/KNOWN_LIMITATIONS.md`. To check your
 own export without committing it:
 `cd backend && INSTABRAIN_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py`
+
+## Caption extraction (Phase 2, trial)
+
+```bash
+# preview exactly what would be sent (no model call)
+backend/.venv/bin/python -m scripts.extract_captions --limit 5 --dry-run
+# run with a GitHub account that has Copilot (token read from env only, never stored)
+INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
+  backend/.venv/bin/python -m scripts.extract_captions --limit 10 --model claude-haiku-5.5
+```

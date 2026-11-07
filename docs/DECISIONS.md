@@ -109,3 +109,24 @@ A sweep may start a second runner if a slow runner misses its heartbeat. Each cl
 `import_batches.runner_id`. Every commit locks the batch row (`SELECT … FOR UPDATE`) and checks the
 token, so a superseded runner fails its next commit with `ClaimLostError` and stops, and counters
 cannot be double-counted. Files already committed are skipped (`status != pending`).
+
+## ADR-018: GitHub Copilot SDK as the first LLM provider (trial)
+**Context:** The user asked to use their existing Copilot instead of a separate AI provider.
+GitHub Models was retired (2026-07-30). The supported route is the GitHub Copilot SDK (GA 2026-06),
+which embeds the Copilot agent runtime and bills the token owner's Copilot plan (usage-based).
+**Decision:** `app/processing/ai/copilot_sdk.py` implements the `LLMProvider` interface. Every
+session runs with **no tools** (`available_tools=[]`), skills, config discovery and custom
+instructions disabled, and a permission handler that rejects everything. It is a plain
+completion endpoint. JSON validity is enforced by our Pydantic schema plus one corrective retry.
+**Account:** the trial run used the user's Adobe-provided Copilot (`anshikag_adobe`), at the user's
+explicit request. Personal data is sent through an employer licence, so check this against company
+policy before bulk processing. A personal plan or another provider is a config change.
+**Privacy:** only caption, hashtags, creator, content type and the user's own collection names are
+sent. Chat titles, senders and message text are never sent (tested).
+
+## ADR-019: Caption extraction stores provenance and is cached by input hash
+Results go to `content_items` (title, summary, categories, tags, confidence) and the full validated
+output plus `_meta` (provider, model, prompt_version, input_hash, attempts) to
+`extracted_data.caption_extraction`. Each attempt writes a `processing_jobs` row. Re-running skips
+items whose input hash (which includes prompt_version) is unchanged. `processing_status` is not
+advanced yet, because caption extraction is only one stage and media stages remain.
