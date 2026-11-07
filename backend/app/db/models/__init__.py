@@ -103,6 +103,8 @@ class ImportBatch(UUIDPk, Timestamps, Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Fencing token of the runner currently allowed to write to this batch.
+    runner_id: Mapped[str | None] = mapped_column(String(36))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     files: Mapped[list[ImportFile]] = relationship(

@@ -29,6 +29,7 @@ the real `label_values` format (old shape kept as fallback). See ADR-013.
 | 12 | Tests with representative fixtures | ✅ | 103 tests (SQLite + PostgreSQL); `real_shape_2026_11` fixture mirrors the real structure; real ZIP smoke test via `INSTABRAIN_REAL_EXPORT` |
 | — | `python -m scripts.inspect_instagram_export` | ✅ | |
 | — | `python -m scripts.import_instagram_export` (resumable) | ✅ | `--resume <id> [--force]` |
+| — | Celery worker + beat sweep, fencing token, retries with backoff | ✅ | `app/workers/`; Compose services `worker`, `beat`, `migrate` |
 | — | API: `POST/GET /api/v1/imports`, `GET /imports/{id}`, `POST /imports/{id}/resume`, `/health`, `/ready` | ✅ | API-key protected |
 
 ### Definition of done — Phase 1
@@ -46,16 +47,24 @@ the real `label_values` format (old shape kept as fallback). See ADR-013.
 Real-export result: 2,829 content references → **2,579 unique content items** (2,016 reels, 563
 posts), 250 duplicates consolidated, 708 story links and 206 profile links reported but not imported.
 
-Phase 1 parsing is verified. Remaining before Phase 2: durable worker (task 4 below).
+Phase 1 parsing is verified, and the durable worker is done (ADR-016/017). **Phase 1 is complete.**
 
 ### Remaining Phase 1 tasks
 
 1. ~~Run on a real export~~ ✅ done 2026-11-07.
 2. ~~Verify collections structure~~ ✅ (was wrong; fixed).
 3. Decide on HTML-format exports (currently: require JSON).
-4. Move imports from FastAPI `BackgroundTasks` to a durable worker (Celery + Redis) — required
-   for "jobs survive API restarts". Today, resume is manual (`/resume` or CLI `--resume --force`).
+4. ~~Durable worker (Celery + Redis)~~ ✅ done 2026-11-07. Tested: unit/eager task tests and a real
+   SIGKILL-mid-import recovery in Docker.
 5. Upload streaming hash + duplicate-archive detection (warn if same SHA-256 already imported).
+
+### MVP reliability criteria (PRD §18) covered so far
+| Criterion | Status |
+|---|---|
+| Background jobs survive API restarts | ✅ Jobs run on the worker; state in PostgreSQL; queue in Redis (AOF) |
+| Failed jobs can be retried | ✅ Automatic (transient), sweep (crashed), `POST /imports/{id}/resume` (manual) |
+| Partial results are retained | ✅ Per-file commits |
+| Errors are logged | ✅ Structured logs (`INSTABRAIN_LOG_JSON=true` for JSON) |
 
 ## Phase 2 — Content Extraction Pipeline ⏳
 ## Phase 3 — Notion Integration ⏳

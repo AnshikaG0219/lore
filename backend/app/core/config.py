@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,16 @@ class Settings(BaseSettings):
     max_member_bytes: int = Field(default=500 * 1024**2, gt=0)
     max_archive_members: int = Field(default=200_000, gt=0)
     max_compression_ratio: int = Field(default=200, gt=0)
+
+    # "celery": imports run on the worker (production). "inline": run in the calling
+    # process (tests, or local use without Redis).
+    task_backend: Literal["celery", "inline"] = "celery"
+    import_task_max_retries: int = Field(default=8, ge=0)
+    import_heartbeat_stale_seconds: int = Field(default=300, gt=0)
+    import_sweep_interval_seconds: int = Field(default=60, gt=0)
+    import_pending_grace_seconds: int = Field(default=120, ge=0)
+    # Unacked tasks are redelivered after this; must exceed the longest import.
+    broker_visibility_timeout_seconds: int = Field(default=6 * 3600, gt=0)
 
     log_level: str = "INFO"
     log_json: bool = False

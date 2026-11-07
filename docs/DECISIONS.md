@@ -45,10 +45,7 @@ Only messages containing an Instagram URL produce references or raw records. Oth
 read in memory to search for links and then discarded; it is never persisted or reported.
 `personal_information` and other unrelated JSON files are not even loaded.
 
-## ADR-008: Phase 1 background execution uses FastAPI BackgroundTasks
-**Trade-off:** Simple, no extra service, but a job is lost if the API process dies mid-import (the
-batch stays resumable via `/resume`). Celery + Redis worker is planned before Phase 2 so that
-"background jobs survive API restarts" (PRD §18) is met. Redis is already in Compose.
+## ADR-008: ~~Phase 1 background execution uses FastAPI BackgroundTasks~~ (superseded by ADR-016)
 
 ## ADR-009: Enums stored as strings; JSON columns portable
 Status enums are `String` columns (no PostgreSQL ENUM types → easier migrations). JSON columns use
@@ -88,3 +85,27 @@ overwrite; message captions fill only when empty. When manual editing arrives (P
 Story links (expire after 24h, not retrievable later) and profile links (`/{user}/`, `/_u/{user}`)
 are counted in reports and kept in raw records, but don't create `content_items`. This is revisitable
 if stories become capturable through an authorised route.
+
+## ADR-016: Celery + Redis worker with a recovery sweep
+**Context:** PRD §18 requires that background jobs survive API restarts and that captured data is
+never lost if workers crash.
+**Decision:**
+- The API persists the batch first and only then enqueues `instabrain.imports.run`. If enqueueing
+  fails (Redis down) the upload still returns 202 and the batch stays `pending`.
+- Celery: `acks_late`, `reject_on_worker_lost`, `prefetch_multiplier=1`, JSON serialisation, no
+  result backend (state lives in PostgreSQL). Redis runs with AOF persistence.
+- A **sweep** task (Celery beat, plus once at worker start) re-enqueues `running` batches whose
+  heartbeat is stale and `pending` batches older than a grace period. This is the main recovery path;
+  broker redelivery (visibility timeout of 6h) is only a backstop.
+- Retries: transient DB errors use exponential backoff (5s doubling, capped at 10 min, max 8). A
+  live runner causes retries every heartbeat interval. Unexpected errors mark the batch `failed`
+  (resumable). Duplicate deliveries of finished batches are no-ops.
+- `task_backend=inline` runs imports in-process for tests and Redis-less local use.
+**Verified:** worker SIGKILLed mid-import of a real 1.1 GB export → after restart the sweep resumed
+the remaining 328/666 files, with totals identical to a clean run.
+
+## ADR-017: Fencing token for import runners
+A sweep may start a second runner if a slow runner misses its heartbeat. Each claim writes a new
+`import_batches.runner_id`. Every commit locks the batch row (`SELECT … FOR UPDATE`) and checks the
+token, so a superseded runner fails its next commit with `ClaimLostError` and stops, and counters
+cannot be double-counted. Files already committed are skipped (`status != pending`).

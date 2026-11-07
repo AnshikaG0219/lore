@@ -1,3 +1,22 @@
+x-backend: &backend
+  build:
+    context: ./backend
+    dockerfile: ../docker/backend.Dockerfile
+  image: instabrain-backend
+  env_file: .env
+  environment:
+    INSTABRAIN_DATABASE_URL: postgresql+psycopg://instabrain:instabrain@postgres:5432/instabrain
+    INSTABRAIN_REDIS_URL: redis://redis:6379/0
+    INSTABRAIN_DATA_DIR: /data
+    INSTABRAIN_TASK_BACKEND: celery
+  volumes:
+    - importdata:/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -17,34 +36,55 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Append-only file: queued tasks survive a Redis restart.
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "${INSTABRAIN_REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
 
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
   api:
-    build:
-      context: ./backend
-      dockerfile: ../docker/backend.Dockerfile
-    env_file: .env
-    environment:
-      INSTABRAIN_DATABASE_URL: postgresql+psycopg://instabrain:instabrain@postgres:5432/instabrain
-      INSTABRAIN_REDIS_URL: redis://redis:6379/0
-      INSTABRAIN_DATA_DIR: /data
-    volumes:
-      - importdata:/data
+    <<: *backend
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      migrate:
+        condition: service_completed_successfully
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+
+  worker:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO",
+              "--concurrency=2", "-Q", "instabrain.imports"]
+    # SIGTERM → warm shutdown: the current file finishes. If the grace period expires the task
+    # is redelivered/swept and resumes from the last committed file.
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  beat:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=INFO",
+              "--schedule=/tmp/celerybeat-schedule"]
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  redisdata:
   importdata:

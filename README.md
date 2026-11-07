@@ -47,17 +47,35 @@ backend/.venv/bin/python -m scripts.import_instagram_export --resume <batch-id> 
 
 Re-importing is safe: content and source associations are idempotent.
 
-## API
+## API + background worker
 
 ```bash
-docker compose up -d --build          # postgres, redis, api (runs migrations)
+docker compose up -d --build          # postgres, redis, migrate, api, worker, beat
+curl localhost:8000/ready             # checks database and queue
 curl localhost:8000/health
 curl -H "X-API-Key: $KEY" -F file=@export.zip localhost:8000/api/v1/imports
 curl -H "X-API-Key: $KEY" localhost:8000/api/v1/imports/<id>
 curl -X POST -H "X-API-Key: $KEY" localhost:8000/api/v1/imports/<id>/resume
 ```
 
-Local without Docker: `cd backend && .venv/bin/uvicorn app.main:app --reload`.
+Uploads return `202` immediately and the import runs on the Celery **worker**. If the worker or
+API crashes, the **beat** sweep resumes the import from its last committed file once its heartbeat
+is stale (default 5 min). See `docs/DECISIONS.md` ADR-016/017.
+
+Local without Docker (Postgres + Redis still from Compose):
+
+```bash
+cd backend
+.venv/bin/uvicorn app.main:app --reload
+.venv/bin/celery -A app.workers.celery_app worker -Q instabrain.imports --loglevel=INFO
+.venv/bin/celery -A app.workers.celery_app beat --loglevel=INFO
+```
+
+Set `INSTABRAIN_TASK_BACKEND=inline` to run imports inside the API process instead (no Redis/worker;
+for development only).
+
+CLI: `python -m scripts.import_instagram_export export.zip --enqueue` hands the import to the worker.
+Without `--enqueue` it runs in the foreground.
 
 ## Tests
 

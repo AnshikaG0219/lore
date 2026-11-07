@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.enums import ImportFileStatus, ImportStatus
@@ -45,7 +46,21 @@ MAX_ISSUES_IN_REPORT = 200
 
 
 class ImportInProgressError(Exception):
-    pass
+    """Another runner holds a fresh claim on this batch."""
+
+
+class ClaimLostError(Exception):
+    """This runner's claim was taken over by another runner; it must stop."""
+
+
+FINISHED_STATUSES = frozenset({ImportStatus.COMPLETED, ImportStatus.COMPLETED_WITH_ERRORS})
+
+
+def is_transient_db_error(exc: BaseException) -> bool:
+    """Connection-level failures worth retrying (DB restart, network blip)."""
+    return isinstance(exc, OperationalError) or (
+        isinstance(exc, DBAPIError) and exc.connection_invalidated
+    )
 
 
 def _now() -> datetime:
@@ -58,10 +73,19 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
+def limits_from_settings(settings: Any) -> ArchiveLimits:
+    return ArchiveLimits(
+        max_member_bytes=settings.max_member_bytes,
+        max_members=settings.max_archive_members,
+        max_compression_ratio=settings.max_compression_ratio,
+    )
+
+
 def create_batch(
     session: Session, archive_path: Path, filename: str | None = None
 ) -> ImportBatch:
     user = get_or_create_user(session)
+    archive_path = archive_path.expanduser().resolve()  # API and worker may differ in cwd
     batch = ImportBatch(
         user_id=user.id,
         filename=filename or archive_path.name,
@@ -76,19 +100,32 @@ def create_batch(
     return batch
 
 
-def _claim(session: Session, batch_id: uuid.UUID, allow_takeover: bool) -> ImportBatch:
+def _claim(
+    session: Session, batch_id: uuid.UUID, allow_takeover: bool, stale_after: timedelta
+) -> tuple[ImportBatch, str]:
+    """Take ownership of a batch. Returns (batch, claim token)."""
     batch = session.get(ImportBatch, batch_id, with_for_update=True)
     if batch is None:
         raise LookupError(f"Import batch {batch_id} not found")
     if batch.status == ImportStatus.RUNNING and not allow_takeover:
         hb = _aware(batch.heartbeat_at)
-        if hb and _now() - hb < HEARTBEAT_STALE_AFTER:
+        if hb and _now() - hb < stale_after:
             raise ImportInProgressError(f"Import {batch_id} is already running")
+    token = str(uuid.uuid4())
+    batch.runner_id = token
     batch.status = ImportStatus.RUNNING
     batch.started_at = batch.started_at or _now()
     batch.heartbeat_at = _now()
     batch.error_message = None
     session.commit()
+    return batch, token
+
+
+def _owned_batch(session: Session, batch_id: uuid.UUID, token: str) -> ImportBatch:
+    """Lock the batch row and verify this runner still owns it (fencing token)."""
+    batch = session.get(ImportBatch, batch_id, with_for_update=True, populate_existing=True)
+    if batch is None or batch.runner_id != token:
+        raise ClaimLostError(f"Lost claim on import {batch_id}")
     return batch
 
 
@@ -156,11 +193,17 @@ def _store_raw(
 
 
 def _persist_file(
-    session: Session, batch_id: uuid.UUID, file_row_id: uuid.UUID, result: FileParseResult
+    session: Session,
+    batch_id: uuid.UUID,
+    token: str,
+    file_row_id: uuid.UUID,
+    result: FileParseResult,
 ) -> None:
-    batch = session.get(ImportBatch, batch_id)
+    batch = _owned_batch(session, batch_id, token)
     file_row = session.get(ImportFile, file_row_id)
-    assert batch is not None and file_row is not None
+    assert file_row is not None
+    if file_row.status != ImportFileStatus.PENDING:
+        return  # already handled (e.g. by a previous runner before a crash)
     repo = ContentRepository(session, batch.user_id)
 
     found = imported = duplicates = created = already = 0
@@ -215,18 +258,24 @@ def run_import(
     limits: ArchiveLimits | None = None,
     *,
     allow_takeover: bool = False,
+    stale_after: timedelta = HEARTBEAT_STALE_AFTER,
     on_file_committed: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Run (or resume) an import. Returns the final report."""
+    """Run (or resume) an import and return the final report.
+
+    Raises ``ImportInProgressError`` if another runner is active, ``ClaimLostError`` if this
+    runner was superseded mid-way, and re-raises transient DB errors so callers can retry
+    (the batch stays resumable; no file is marked failed for a connection problem).
+    """
     with session_factory() as session:
-        batch = _claim(session, batch_id, allow_takeover)
+        batch, token = _claim(session, batch_id, allow_takeover, stale_after)
         archive_path = Path(batch.archive_path)
 
     try:
         archive = ExportArchive(archive_path, limits)
     except ArchiveError as exc:
         with session_factory() as session:
-            batch = session.get(ImportBatch, batch_id)
+            batch = _owned_batch(session, batch_id, token)
             batch.status = ImportStatus.FAILED
             batch.error_message = str(exc)
             batch.completed_at = _now()
@@ -236,7 +285,7 @@ def run_import(
 
     with archive:
         with session_factory() as session:
-            batch = session.get(ImportBatch, batch_id)
+            batch = _owned_batch(session, batch_id, token)
             _register_files(session, batch, archive)
             pending = session.execute(
                 select(ImportFile.id, ImportFile.path, ImportFile.size)
@@ -250,35 +299,47 @@ def run_import(
             result = parse_member(archive, ArchiveMember(path, size))
             with session_factory() as session:
                 try:
-                    _persist_file(session, batch_id, file_id, result)
+                    _persist_file(session, batch_id, token, file_id, result)
                     session.commit()
+                except ClaimLostError:
+                    session.rollback()
+                    log.warning("import_claim_lost", extra={"batch_id": str(batch_id)})
+                    raise
                 except Exception as exc:
                     session.rollback()
+                    if is_transient_db_error(exc):
+                        raise
                     log.exception("import_file_failed", extra={"path": path})
-                    _mark_file_failed(session, batch_id, file_id, f"Persistence failure: {exc!r}")
+                    _mark_file_failed(
+                        session, batch_id, token, file_id, f"Persistence failure: {exc!r}"
+                    )
             if on_file_committed:
                 on_file_committed(path)
 
     with session_factory() as session:
-        batch = session.get(ImportBatch, batch_id)
+        batch = _owned_batch(session, batch_id, token)
         batch.status = (
             ImportStatus.COMPLETED_WITH_ERRORS if batch.failures else ImportStatus.COMPLETED
         )
         batch.completed_at = _now()
+        batch.runner_id = None
         batch.report = build_report(session, batch)
         session.commit()
         log.info("import_finished", extra={"batch_id": str(batch_id), "status": batch.status})
         return batch.report
 
 
-def _mark_file_failed(session: Session, batch_id: uuid.UUID, file_id: uuid.UUID, msg: str) -> None:
+def _mark_file_failed(
+    session: Session, batch_id: uuid.UUID, token: str, file_id: uuid.UUID, msg: str
+) -> None:
+    batch = _owned_batch(session, batch_id, token)
     file_row = session.get(ImportFile, file_id)
-    batch = session.get(ImportBatch, batch_id)
     file_row.status = ImportFileStatus.FAILED
     file_row.issues = [{"severity": "error", "message": msg, "path": file_row.path}]
     file_row.processed_at = _now()
     batch.processed_files += 1
     batch.failures += 1
+    batch.heartbeat_at = _now()
     session.commit()
 
 

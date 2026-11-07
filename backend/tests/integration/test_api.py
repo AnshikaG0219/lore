@@ -1,17 +1,29 @@
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 from app.main import create_app
+from app.workers.dispatch import InlineImportDispatcher
+
+
+def _app(session_factory, settings, dispatcher=None):
+    app = create_app(session_factory,
+                     dispatcher or InlineImportDispatcher(session_factory, settings))
+    app.dependency_overrides[get_settings] = lambda: settings
+    return app
 
 
 @pytest.fixture
-def client(session_factory, tmp_path):
-    app = create_app(session_factory)
-    settings = Settings(api_key="test-key", data_dir=tmp_path / "data",
-                        max_upload_bytes=50 * 1024**2)
-    app.dependency_overrides[get_settings] = lambda: settings
-    with TestClient(app) as c:
+def settings(tmp_path):
+    return Settings(api_key="test-key", data_dir=tmp_path / "data",
+                    max_upload_bytes=50 * 1024**2)
+
+
+@pytest.fixture
+def client(session_factory, settings):
+    with TestClient(_app(session_factory, settings)) as c:
         yield c
 
 
@@ -35,13 +47,12 @@ def test_upload_and_report(client, synthetic_zip):
     assert r.status_code == 202, r.text
     batch_id = r.json()["id"]
     # TestClient runs background tasks before returning.
-    detail = client.get(f"/api/v1/imports/{batch_id}", headers=H).json()
+    detail = client.get(f"/api/v1/imports/{batch_id}", headers=H).json()  # inline dispatcher
     assert detail["status"] == "completed_with_errors"
     assert detail["filename"] == "my_export.zip"
     assert detail["report"]["references"]["content_items_created"] == 5
     assert [b["id"] for b in client.get("/api/v1/imports", headers=H).json()] == [batch_id]
-    # resuming a batch that is not completed is accepted and is a no-op
-    assert client.post(f"/api/v1/imports/{batch_id}/resume", headers=H).status_code == 202
+    assert client.post(f"/api/v1/imports/{batch_id}/resume", headers=H).status_code == 409
 
 
 def test_rejects_non_zip_upload(client):
@@ -53,10 +64,8 @@ def test_rejects_non_zip_upload(client):
 
 
 def test_upload_size_limit(session_factory, tmp_path, synthetic_zip):
-    app = create_app(session_factory)
-    app.dependency_overrides[get_settings] = lambda: Settings(
-        api_key="test-key", data_dir=tmp_path / "d", max_upload_bytes=100)
-    with TestClient(app) as c, synthetic_zip.open("rb") as fh:
+    settings = Settings(api_key="test-key", data_dir=tmp_path / "d", max_upload_bytes=100)
+    with TestClient(_app(session_factory, settings)) as c, synthetic_zip.open("rb") as fh:
         r = c.post("/api/v1/imports", headers=H, files={"file": ("e.zip", fh, "application/zip")})
     assert r.status_code == 413
     assert not any((tmp_path / "d" / "uploads").iterdir())
@@ -65,3 +74,64 @@ def test_upload_size_limit(session_factory, tmp_path, synthetic_zip):
 def test_unknown_batch(client):
     assert client.get("/api/v1/imports/00000000-0000-0000-0000-000000000000",
                       headers=H).status_code == 404
+
+
+class RecordingDispatcher:
+    def __init__(self, fail=False, healthy=True):
+        self.calls, self.fail, self.healthy = [], fail, healthy
+
+    def enqueue_import(self, batch_id):
+        if self.fail:
+            from app.workers.dispatch import DispatchError
+            raise DispatchError("redis down")
+        self.calls.append(batch_id)
+
+    def is_healthy(self):
+        return self.healthy
+
+
+def _upload(c, path):
+    with path.open("rb") as fh:
+        return c.post("/api/v1/imports", headers=H,
+                      files={"file": ("e.zip", fh, "application/zip")})
+
+
+def test_upload_is_queued_not_run(session_factory, settings, synthetic_zip):
+    d = RecordingDispatcher()
+    with TestClient(_app(session_factory, settings, d)) as c:
+        r = _upload(c, synthetic_zip)
+    assert r.status_code == 202 and r.json()["status"] == "pending"
+    assert [str(x) for x in d.calls] == [r.json()["id"]]
+
+
+def test_upload_survives_queue_outage(session_factory, settings, synthetic_zip):
+    with TestClient(_app(session_factory, settings, RecordingDispatcher(fail=True))) as c:
+        r = _upload(c, synthetic_zip)
+    assert r.status_code == 202 and r.json()["status"] == "pending"  # sweep will pick it up
+
+
+def test_resume_rejects_live_running_batch(session_factory, settings, synthetic_zip):
+    from datetime import UTC, datetime
+
+    from app.db.models import ImportBatch
+
+    d = RecordingDispatcher()
+    with TestClient(_app(session_factory, settings, d)) as c:
+        batch_id = _upload(c, synthetic_zip).json()["id"]
+        with session_factory() as s:
+            b = s.get(ImportBatch, uuid.UUID(batch_id))
+            b.status, b.heartbeat_at = "running", datetime.now(UTC)
+            s.commit()
+        assert c.post(f"/api/v1/imports/{batch_id}/resume", headers=H).status_code == 409
+        with session_factory() as s:
+            b = s.get(ImportBatch, uuid.UUID(batch_id))
+            b.heartbeat_at = datetime(2020, 1, 1, tzinfo=UTC)
+            s.commit()
+        assert c.post(f"/api/v1/imports/{batch_id}/resume", headers=H).status_code == 202
+    assert len(d.calls) == 2
+
+
+def test_ready_reports_queue_down(session_factory, settings):
+    with TestClient(_app(session_factory, settings, RecordingDispatcher(healthy=False))) as c:
+        r = c.get("/ready")
+    assert r.status_code == 503 and r.json()["queue"] == "error"

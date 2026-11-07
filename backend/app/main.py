@@ -4,9 +4,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.v1 import imports, system
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.workers.dispatch import ImportDispatcher, build_dispatcher
 
 
-def create_app(session_factory: sessionmaker[Session] | None = None) -> FastAPI:
+def create_app(
+    session_factory: sessionmaker[Session] | None = None,
+    dispatcher: ImportDispatcher | None = None,
+) -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
     app = FastAPI(title="InstaBrain", version="0.1.0")
@@ -15,6 +19,7 @@ def create_app(session_factory: sessionmaker[Session] | None = None) -> FastAPI:
 
         session_factory = get_sessionmaker()
     app.state.session_factory = session_factory
+    app.state.dispatcher = dispatcher or build_dispatcher(settings, session_factory)
     app.include_router(system.router)
     app.include_router(imports.router, prefix="/api/v1")
     return app

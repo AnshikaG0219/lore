@@ -1,24 +1,25 @@
-"""Import endpoints. Imports run in a background task (Phase 1); see docs/DECISIONS.md."""
+"""Import endpoints. Work is handed to the background worker via the import dispatcher."""
 
 from __future__ import annotations
 
 import logging
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
-from app.api.deps import get_session, get_session_factory
+from app.api.deps import get_session
 from app.core.config import Settings, get_settings
 from app.core.security import require_api_key
 from app.db.enums import ImportStatus
 from app.db.models import ImportBatch
-from app.ingestion.importer import ImportInProgressError, create_batch, run_import
-from app.ingestion.instagram.archive import ArchiveLimits
+from app.ingestion.importer import FINISHED_STATUSES, create_batch
 from app.schemas.imports import ImportBatchDetail, ImportBatchOut
+from app.workers.dispatch import DispatchError, ImportDispatcher
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/imports", tags=["imports"], dependencies=[Depends(require_api_key)])
@@ -27,12 +28,8 @@ _CHUNK = 1024 * 1024
 _ZIP_MAGIC = (b"PK\x03\x04", b"PK\x05\x06")
 
 
-def limits_from(settings: Settings) -> ArchiveLimits:
-    return ArchiveLimits(
-        max_member_bytes=settings.max_member_bytes,
-        max_members=settings.max_archive_members,
-        max_compression_ratio=settings.max_compression_ratio,
-    )
+def get_dispatcher(request: Request) -> ImportDispatcher:
+    return request.app.state.dispatcher
 
 
 def _safe_filename(name: str | None) -> str:
@@ -40,28 +37,19 @@ def _safe_filename(name: str | None) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", base)[:200] or "export.zip"
 
 
-def _run(factory: sessionmaker[Session], batch_id: uuid.UUID, limits: ArchiveLimits,
-         takeover: bool = False) -> None:
+def _dispatch(dispatcher: ImportDispatcher, batch_id: uuid.UUID) -> None:
     try:
-        run_import(factory, batch_id, limits, allow_takeover=takeover)
-    except ImportInProgressError:
-        log.warning("import_already_running", extra={"batch_id": str(batch_id)})
-    except Exception:
-        log.exception("import_crashed", extra={"batch_id": str(batch_id)})
-        with factory() as s:
-            b = s.get(ImportBatch, batch_id)
-            if b:
-                b.status = ImportStatus.FAILED
-                b.error_message = "Unexpected error; use resume to continue"
-                s.commit()
+        dispatcher.enqueue_import(batch_id)
+    except DispatchError as exc:
+        # The batch is safely persisted as pending; the worker's periodic sweep will run it.
+        log.warning("import_enqueue_failed", extra={"batch_id": str(batch_id), "error": str(exc)})
 
 
 @router.post("", response_model=ImportBatchOut, status_code=status.HTTP_202_ACCEPTED)
 async def upload_import(
     file: UploadFile,
-    background: BackgroundTasks,
     session: Session = Depends(get_session),
-    factory: sessionmaker[Session] = Depends(get_session_factory),
+    dispatcher: ImportDispatcher = Depends(get_dispatcher),
     settings: Settings = Depends(get_settings),
 ) -> ImportBatch:
     name = _safe_filename(file.filename)
@@ -88,7 +76,8 @@ async def upload_import(
         raise
 
     batch = create_batch(session, dest, filename=name)
-    background.add_task(_run, factory, batch.id, limits_from(settings))
+    _dispatch(dispatcher, batch.id)
+    session.refresh(batch)
     return batch
 
 
@@ -114,15 +103,20 @@ def get_import(batch_id: uuid.UUID, session: Session = Depends(get_session)) -> 
              status_code=status.HTTP_202_ACCEPTED)
 def resume_import(
     batch_id: uuid.UUID,
-    background: BackgroundTasks,
     session: Session = Depends(get_session),
-    factory: sessionmaker[Session] = Depends(get_session_factory),
+    dispatcher: ImportDispatcher = Depends(get_dispatcher),
     settings: Settings = Depends(get_settings),
 ) -> ImportBatch:
     batch = session.get(ImportBatch, batch_id)
     if batch is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Import not found")
-    if batch.status == ImportStatus.COMPLETED:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Import already completed")
-    background.add_task(_run, factory, batch.id, limits_from(settings))
+    if batch.status in FINISHED_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Import already finished")
+    if batch.status == ImportStatus.RUNNING and batch.heartbeat_at is not None:
+        hb = batch.heartbeat_at if batch.heartbeat_at.tzinfo else \
+            batch.heartbeat_at.replace(tzinfo=UTC)
+        if datetime.now(UTC) - hb < timedelta(seconds=settings.import_heartbeat_stale_seconds):
+            raise HTTPException(status.HTTP_409_CONFLICT, "Import is currently running")
+    _dispatch(dispatcher, batch.id)
+    session.refresh(batch)
     return batch

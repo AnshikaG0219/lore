@@ -41,11 +41,17 @@ Group vs direct detection uses `participants > 2` (in the real export this match
   (`resolved = false`) and reported, never silently dropped.
 
 ## Operational
-- Imports run in FastAPI `BackgroundTasks` (ADR-008). If the API process stops mid-import, the batch
-  stays `running` until resumed (`POST /api/v1/imports/{id}/resume` after the 5-minute heartbeat
-  expires, or CLI `--resume <id> --force`).
-- Single-worker import per batch; concurrent imports of different batches that share content rely on
-  DB unique constraints and may fail a file on a race (the file is marked failed and can be resumed).
+- Crash recovery latency: a crashed import resumes after the heartbeat goes stale (default 300s) plus
+  up to one sweep interval (60s). The heartbeat is updated per file, so a single file taking longer
+  than the stale threshold triggers a takeover. This is safe (fencing token) but wastes work.
+- Run exactly **one** `beat` process. Several beats only cause duplicate sweeps, which are harmless
+  but noisy.
+- Upload and worker must share `INSTABRAIN_DATA_DIR` (one Docker volume). A multi-host deployment
+  needs object storage (planned abstraction).
+- Concurrent imports of *different* batches that share content rely on DB unique constraints. On a
+  race, one file may fail with a persistence error and is reported. Re-importing fixes it.
+- Files that failed permanently (e.g. malformed JSON) are not retried by resume. Re-upload a fixed
+  export instead.
 - Uploaded archives are kept in `INSTABRAIN_DATA_DIR/uploads`; no retention/cleanup policy yet.
 - pgvector extension is not enabled yet (Phase 6). `media_assets`, `transcripts`, `content_chunks`
   tables are deferred to the phases that use them.
