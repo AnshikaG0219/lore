@@ -161,3 +161,12 @@ curl -X POST -H "X-API-Key: $KEY" localhost:8000/api/v1/content/<id>/reprocess
 ```
 Or in Docker: `INSTABRAIN_COPILOT_GITHUB_TOKEN=... docker compose --profile pipeline up -d`.
 - Architecture diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
+## Dashboard
+
+Open **http://localhost:8000/** and enter your API key (`INSTABRAIN_API_KEY` from `.env`).
+
+- **Overview:** totals, categories, processing status, collections, where content came from
+- **Content:** search and filter everything. Click an item for its summary, extracted places,
+  books and products (with *explicit/inferred* evidence), caption, sources and a **Reprocess** button.
+- **Places:** every extracted place across your saves, filterable (e.g. "ladakh", "café")

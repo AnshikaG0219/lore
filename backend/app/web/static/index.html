@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InstaBrain</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🧠 InstaBrain</div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="overview" role="tab">Overview</button>
+      <button class="tab" data-view="content" role="tab">Content</button>
+      <button class="tab" data-view="places" role="tab">Places</button>
+    </nav>
+    <button id="logout" class="ghost" title="Forget API key">Sign out</button>
+  </header>
+
+  <main>
+    <!-- API key gate -->
+    <section id="login" class="card narrow" hidden>
+      <h2>Connect</h2>
+      <p class="muted">Enter the API key from your <code>.env</code> (<code>INSTABRAIN_API_KEY</code>).
+        It is kept only in this browser tab.</p>
+      <form id="login-form">
+        <input id="api-key" type="password" autocomplete="off" placeholder="API key" required>
+        <button type="submit">Open dashboard</button>
+      </form>
+      <p id="login-error" class="error" role="alert"></p>
+    </section>
+
+    <!-- Overview -->
+    <section id="view-overview" class="view">
+      <div id="kpis" class="kpis"></div>
+      <div class="grid2">
+        <div class="card"><h3>Categories</h3><div id="chart-categories" class="bars"></div></div>
+        <div class="card"><h3>Processing status</h3><div id="chart-status" class="bars"></div></div>
+        <div class="card"><h3>Your collections</h3><div id="collections" class="chips"></div></div>
+        <div class="card"><h3>Where content came from</h3><div id="chart-sources" class="bars"></div>
+          <p id="last-import" class="muted small"></p></div>
+      </div>
+      <div class="card"><h3>Recently processed</h3><div id="recent"></div></div>
+    </section>
+
+    <!-- Content -->
+    <section id="view-content" class="view" hidden>
+      <form id="filters" class="filters card">
+        <input name="q" type="search" placeholder="Search title, summary, caption, creator…">
+        <select name="category"><option value="">All categories</option></select>
+        <select name="status"><option value="">All statuses</option></select>
+        <select name="collection"><option value="">All collections</option></select>
+        <select name="content_type"><option value="">Posts & reels</option></select>
+        <select name="processed">
+          <option value="">Processed or not</option>
+          <option value="true">Processed only</option>
+          <option value="false">Not processed</option>
+        </select>
+        <select name="sort">
+          <option value="recent">Newest saves</option>
+          <option value="processed">Recently processed</option>
+          <option value="confidence">Highest confidence</option>
+          <option value="title">Title A–Z</option>
+        </select>
+      </form>
+      <div class="list-head"><span id="result-count" class="muted"></span>
+        <span class="pager"><button id="prev" class="ghost">‹ Prev</button>
+        <span id="page"></span><button id="next" class="ghost">Next ›</button></span></div>
+      <div id="content-list" class="list"></div>
+    </section>
+
+    <!-- Places -->
+    <section id="view-places" class="view" hidden>
+      <div class="card filters"><input id="places-q" type="search"
+        placeholder="Filter places, e.g. Ladakh, café, Noida…"></div>
+      <div class="card"><table class="table"><thead><tr>
+        <th>Place</th><th>Type</th><th>Location</th><th>Evidence</th><th>From post</th>
+      </tr></thead><tbody id="places-body"></tbody></table>
+      <p id="places-empty" class="muted" hidden>No places extracted yet. Process more content.</p></div>
+    </section>
+  </main>
+
+  <!-- Detail drawer -->
+  <aside id="drawer" class="drawer" hidden aria-modal="true" role="dialog">
+    <div class="drawer-head"><button id="drawer-close" class="ghost" aria-label="Close">✕</button></div>
+    <div id="drawer-body"></div>
+  </aside>
+  <div id="scrim" class="scrim" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -90,7 +90,11 @@ most list posts ("5 books…", "new cafés…") keep the actual list in images/v
 transcription are essential, not optional.
 ## Phase 3 — Notion Integration ⏳
 ## Phase 4 — Continuous Capture ⏳
-## Phase 5 — Dashboard ⏳
+## Phase 5 — Dashboard 🟡
+Interim static dashboard at `/dashboard/` (ADR-022): overview KPIs, category/status/source charts,
+collections, searchable/filterable content list, detail drawer with evidence badges and
+reprocess, places explorer. Verified in Chromium (Playwright), no console/CSP errors.
+Still to do for Phase 5: Next.js app, session auth, manual editing, bulk operations, settings.
 ## Phase 6 — Semantic Search & Assistant ⏳
 ## Phase 7 — Advanced Features ⏳
 

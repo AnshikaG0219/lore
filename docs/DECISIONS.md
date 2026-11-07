@@ -185,3 +185,16 @@ failures, and record its stage (PRD §12). The import worker established the pat
   stored in the image or repo.
 **Verified:** 7 real items (collection "ladakh") queued via API through a host pipeline worker
 (Adobe Copilot): 5 completed, 2 needs_manual_input, 0 retries, ~11s each. Re-enqueue was ignored.
+
+## ADR-022: Interim dashboard as static files served by FastAPI
+**Context:** The user wanted to see the data now. The PRD's Next.js frontend is Phase 5.
+**Decision:** A dependency-free dashboard (`backend/app/web/static`: HTML + vanilla JS + CSS) at
+`/dashboard/`, using only the public JSON API. New read routes: `GET /content` (search, filters,
+pagination, sort), `GET /content/{id}` (extraction, sources, job, media text), `GET /facets`,
+`GET /places`. Phase 5 can reuse these routes unchanged.
+**Security:** API key is entered by the user and kept in `sessionStorage` (cleared when the tab
+closes). All untrusted text is rendered with `textContent` (no `innerHTML`, tested), and links
+are restricted to same-origin or `https://*.instagram.com`. Strict CSP: `default-src 'self'`, no
+inline script or style attributes (bar widths are set via CSSOM), `frame-ancestors 'none'`,
+`nosniff`, `no-referrer`. This is suitable for local, single-user use. Real session auth comes
+with Phase 5 (PRD §13).

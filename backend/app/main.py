@@ -1,7 +1,11 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.v1 import content, imports, processing, system
+from app.api.v1 import browse, content, imports, processing, system
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.workers.dispatch import ImportDispatcher, build_dispatcher
@@ -24,7 +28,33 @@ def create_app(
     app.include_router(imports.router, prefix="/api/v1")
     app.include_router(content.router, prefix="/api/v1")
     app.include_router(processing.router, prefix="/api/v1")
+    app.include_router(browse.router, prefix="/api/v1")
+    _mount_dashboard(app)
     return app
+
+
+DASHBOARD_DIR = Path(__file__).parent / "web" / "static"
+# Same-origin only: no external scripts/styles/fonts, no inline script, no framing.
+DASHBOARD_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                 "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+
+
+def _mount_dashboard(app: FastAPI) -> None:
+    app.mount("/dashboard", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse("/dashboard/")
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/dashboard"):
+            response.headers["Content-Security-Policy"] = DASHBOARD_CSP
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["X-Frame-Options"] = "DENY"
+        return response
 
 
 app = create_app()
