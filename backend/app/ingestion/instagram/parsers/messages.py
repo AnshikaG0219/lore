@@ -22,6 +22,7 @@ from app.ingestion.instagram.models import (
     SourceType,
 )
 from app.ingestion.instagram.parsers.shared_links import links_from_node
+from app.ingestion.url_parser import parse_url
 
 PARSER_NAME = "messages.v1"
 
@@ -88,8 +89,11 @@ def parse_messages(path: str, data: Any) -> FileParseResult:
         sender = _str(message.get("sender_name")) or _str(message.get("sender"))
         share = message.get("share") if isinstance(message.get("share"), dict) else {}
         owner = _str(share.get("original_content_owner"))
+        share_link = parse_url(share["link"]) if isinstance(share.get("link"), str) else None
+        share_key = share_link.identity_key if share_link else None
         locator = f"{conv_id}|{ts_raw}|{sender or ''}"
         for link in links:
+            is_shared_item = link.identity_key == share_key
             result.references.append(
                 ContentReference(
                     url=link,
@@ -98,7 +102,8 @@ def parse_messages(path: str, data: Any) -> FileParseResult:
                     source_reference=locator,
                     captured_at=sent_at,
                     sender=sender,
-                    creator_username=owner or link.username,
+                    creator_username=(owner if is_shared_item else None) or link.username,
+                    caption=_str(share.get("share_text")) if is_shared_item else None,
                     conversation_id=conv_id,
                     metadata={
                         "conversation_id": conv_id,

@@ -1,0 +1,43 @@
+{
+  "participants": [{"name": "Friend A"}, {"name": "Friend B"}, {"name": "Test User"}],
+  "messages": [
+    {
+      "sender_name": "Friend A",
+      "timestamp_ms": 1792800000000,
+      "share": {
+        "link": "https://www.instagram.com/reel/AAAreel0001/?igsh=abc123",
+        "share_text": "6 caf\u00c3\u00a9s in Leh",
+        "original_content_owner": "creator.one"
+      },
+      "is_geoblocked_for_viewer": false,
+      "is_unsent_image_by_messenger_kid_parent": false
+    },
+    {
+      "sender_name": "Friend B",
+      "timestamp_ms": 1792800100000,
+      "share": {"link": "https://www.instagram.com/stories/someone/3700000000000000001/"},
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Friend B",
+      "timestamp_ms": 1792800200000,
+      "share": {
+        "link": "https://www.instagram.com/_u/creator_three",
+        "profile_share_username": "creator_three",
+        "profile_share_name": "Creator Three"
+      },
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Test User",
+      "timestamp_ms": 1792800300000,
+      "content": "Private chat text that must never be stored.",
+      "reactions": [{"reaction": "\u00e2\u009d\u00a4", "actor": "Friend A"}],
+      "is_geoblocked_for_viewer": false
+    }
+  ],
+  "title": "Book Club",
+  "is_still_participant": true,
+  "thread_path": "inbox/bookclub_111",
+  "magic_words": []
+}

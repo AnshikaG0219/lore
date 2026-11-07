@@ -125,6 +125,13 @@ def parse_url(raw: str) -> ParsedInstagramUrl | None:
             canonical_url=f"https://www.instagram.com/{tail}/",
             username=segments[1] if segments[1] != "highlights" else None,
         )
+    if root == "_u" and len(segments) >= 2 and _USERNAME.match(segments[1]):
+        return ParsedInstagramUrl(
+            raw=raw,
+            kind=UrlKind.PROFILE,
+            canonical_url=f"https://www.instagram.com/{segments[1].lower()}/",
+            username=segments[1].lower(),
+        )
     if len(segments) == 1 and root not in _RESERVED_ROOTS and _USERNAME.match(segments[0]):
         return ParsedInstagramUrl(
             raw=raw,

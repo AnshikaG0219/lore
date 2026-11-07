@@ -41,6 +41,7 @@ class ContentReference:
     captured_at: datetime | None = None
     sender: str | None = None
     creator_username: str | None = None
+    caption: str | None = None
     conversation_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     raw: Any = None

@@ -1,0 +1,20 @@
+{
+  "participants": [{"name": "Stranger"}, {"name": "Test User"}],
+  "messages": [
+    {
+      "sender_name": "Stranger",
+      "timestamp_ms": 1792900000000,
+      "share": {
+        "link": "https://www.instagram.com/p/BBBpost0002/",
+        "share_text": "Five books for autumn",
+        "original_content_owner": "bookish"
+      },
+      "is_geoblocked_for_viewer": false
+    }
+  ],
+  "title": "Stranger",
+  "is_still_participant": true,
+  "thread_path": "message_requests/stranger_222",
+  "magic_words": [],
+  "is_pending": true
+}

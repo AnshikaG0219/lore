@@ -50,6 +50,7 @@ def test_post_and_reel_with_same_shortcode_share_identity():
         ("https://www.instagram.com/s/aGlnaGxpZ2h0OjE3/", UrlKind.SHARE_LINK),
         ("https://www.instagram.com/stories/someone/3312345678901234567/", UrlKind.STORY),
         ("https://www.instagram.com/Mountain_Cafes/", UrlKind.PROFILE),
+        ("https://www.instagram.com/_u/mountain_cafes", UrlKind.PROFILE),
         ("https://www.instagram.com/explore/tags/ladakh/", UrlKind.OTHER),
     ],
 )

@@ -17,7 +17,9 @@ _MIN_TS = 1262304000
 _MAX_TS = 4102444800
 
 URL_KEYS = ("href", "link", "url", "uri")
-TIMESTAMP_KEYS = ("timestamp", "timestamp_ms", "creation_timestamp", "taken_at", "time")
+TIMESTAMP_KEYS = (
+    "timestamp", "timestamp_ms", "timestamp_value", "creation_timestamp", "taken_at", "time",
+)
 
 
 def repair_text(value: str) -> str:

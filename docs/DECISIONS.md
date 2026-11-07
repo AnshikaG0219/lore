@@ -66,3 +66,25 @@ imports to a default `owner@instabrain.local` user. Multi-user ownership require
 ## ADR-012: API-key auth for admin endpoints in Phase 1
 All `/api/v1/*` routes require `X-API-Key` (constant-time compare). If no key is configured the API
 returns 503 rather than running open. Session auth for the dashboard comes with Phase 5.
+
+## ADR-013: Parse the verified `label_values` export format first, keep old shapes as fallback
+**Context:** The first real export (2026-11) showed saved posts as a top-level list of
+`label_values` records and collections as one record per collection with nested `Media` items. The
+original assumption (flat `string_map_data` list with header rows) was wrong and lost every
+collection name.
+**Decision:** `parsers/label_values.py` reads the verified structure (URL, Caption, Hashtags,
+Owner.Username). Collections switch to the nested parser when any record has a `Media` section,
+otherwise use the legacy flat parser. Captions, hashtags and creator display names are stored on the
+source (`content_sources.metadata`) and the caption on `content_items.caption`. The anonymised
+fixture `tests/fixtures/real_shape_2026_11/` mirrors the real keys exactly.
+**Never invent:** collection items have no add time, so none is recorded.
+
+## ADR-014: Caption precedence
+Saved records carry the full caption; DM shares only a `share_text` preview. Saved-source captions
+overwrite; message captions fill only when empty. When manual editing arrives (Phase 5), a
+`user_edited` guard must stop imports from overwriting user changes.
+
+## ADR-015: Stories and profiles are not content items
+Story links (expire after 24h, not retrievable later) and profile links (`/{user}/`, `/_u/{user}`)
+are counted in reports and kept in raw records, but don't create `content_items`. This is revisitable
+if stories become capturable through an authorised route.

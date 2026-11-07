@@ -4,8 +4,12 @@ Living document. Updated as each phase progresses. Status values: ✅ done (test
 
 ## Repository state at start of Phase 1 (2026-11-07)
 
-The repository contained only `PRD.md`. No code, no fixtures, and **no real Instagram export**.
+The repository contained only `PRD.md`. No code, no fixtures, and no real Instagram export.
 Everything below was built from scratch.
+
+**2026-11-07 update:** first real export (JSON, ~1.1 GB, 1,430 files) received and verified.
+Saved posts and collections used a different structure than assumed; parsers were rewritten for
+the real `label_values` format (old shape kept as fallback). See ADR-013.
 
 ## Phase 1 — Foundation & Historical Import (P0)
 
@@ -16,13 +20,13 @@ Everything below was built from scratch.
 | 3 | Docker Compose (postgres, redis, api) | ✅ | Host ports configurable via `INSTABRAIN_PG_HOST_PORT` / `INSTABRAIN_REDIS_HOST_PORT` |
 | 4 | Database models + initial migration | ✅ | users, content_items, content_sources, import_batches, import_files, raw_import_records, processing_jobs, audit_logs |
 | 5 | Safe ZIP inspection | ✅ | No extraction to disk; traversal/symlink/encrypted/zip-bomb/size/CRC checks |
-| 6 | Saved-post parsing | 🟡 | Works on synthetic fixtures; **awaiting real export to confirm** |
-| 7 | Group/direct message parsing | 🟡 | Same; privacy filter keeps only link-bearing messages |
+| 6 | Saved-post + collection parsing | ✅ | Verified on real export: 103 saved posts, 9 collections / 61 items, creator + caption + hashtags |
+| 7 | Group/direct message parsing | ✅ | Verified: 591 threads (inbox + message_requests), 5 groups; privacy filter keeps only link-bearing messages |
 | 8 | Shared Instagram URL extraction | ✅ | From URL-typed fields and free text |
 | 9 | URL normalisation | ✅ | Case-sensitive shortcode identity; `/p` `/reel` `/reels` `/tv`, `instagr.am`, `/{user}/reel/…`, tracking params |
 | 10 | Deduplication | ✅ | By shortcode; one `content_item`, many `content_sources` |
 | 11 | Import reporting | ✅ | CLI text/JSON + persisted `import_batches.report` + API |
-| 12 | Tests with representative fixtures | 🟡 | 95 tests (SQLite + PostgreSQL). Fixtures are **synthetic** |
+| 12 | Tests with representative fixtures | ✅ | 103 tests (SQLite + PostgreSQL); `real_shape_2026_11` fixture mirrors the real structure; real ZIP smoke test via `INSTABRAIN_REAL_EXPORT` |
 | — | `python -m scripts.inspect_instagram_export` | ✅ | |
 | — | `python -m scripts.import_instagram_export` (resumable) | ✅ | `--resume <id> [--force]` |
 | — | API: `POST/GET /api/v1/imports`, `GET /imports/{id}`, `POST /imports/{id}/resume`, `/health`, `/ready` | ✅ | API-key protected |
@@ -31,23 +35,24 @@ Everything below was built from scratch.
 
 | Criterion | Status |
 |---|---|
-| A real Instagram export can be uploaded | 🟡 Upload works; never run against a real export |
-| Saved-post references are extracted | 🟡 Synthetic only |
-| Group chat Instagram URLs are extracted | 🟡 Synthetic only |
+| A real Instagram export can be uploaded | ✅ Real 1.1 GB export imported in ~9 s, 0 errors/warnings |
+| Saved-post references are extracted | ✅ 103 / 103 |
+| Group chat Instagram URLs are extracted | ✅ 1,721 group + 944 direct references |
 | Source metadata is preserved | ✅ |
 | Duplicate URLs are consolidated | ✅ |
 | Import can resume after failure | ✅ (tested by simulated crash) |
 | Import results are available in a report | ✅ |
 
-**Phase 1 is not complete until it has been run against at least one real export.** See
-`docs/KNOWN_LIMITATIONS.md` → "Awaiting real fixtures".
+Real-export result: 2,829 content references → **2,579 unique content items** (2,016 reels, 563
+posts), 250 duplicates consolidated, 708 story links and 206 profile links reported but not imported.
+
+Phase 1 parsing is verified. Remaining before Phase 2: durable worker (task 4 below).
 
 ### Remaining Phase 1 tasks
 
-1. **Run `inspect_instagram_export` on a real export** (JSON format) and add anonymised excerpts
-   to `backend/tests/fixtures/real/`. Adjust parsers only where reality differs.
-2. Verify `saved_collections.json` header/item ordering assumption.
-3. Decide on HTML-format exports (support vs. require JSON).
+1. ~~Run on a real export~~ ✅ done 2026-11-07.
+2. ~~Verify collections structure~~ ✅ (was wrong; fixed).
+3. Decide on HTML-format exports (currently: require JSON).
 4. Move imports from FastAPI `BackgroundTasks` to a durable worker (Celery + Redis) — required
    for "jobs survive API restarts". Today, resume is manual (`/resume` or CLI `--resume --force`).
 5. Upload streaming hash + duplicate-archive detection (warn if same SHA-256 already imported).

@@ -10,10 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ContentItem, ContentSource, User
 from app.ingestion.deduplication import merge_content_type
-from app.ingestion.instagram.models import ContentReference
+from app.ingestion.instagram.models import ContentReference, SourceType
 from app.ingestion.url_parser import UrlKind
 
 DEFAULT_OWNER_EMAIL = "owner@instabrain.local"
+
+# Saved records carry the post's full caption; message shares only carry a preview
+# (share_text). Saved captions therefore replace message captions, never the reverse.
+_AUTHORITATIVE_CAPTION = frozenset({SourceType.SAVED_POST, SourceType.SAVED_COLLECTION})
 
 
 def get_or_create_user(session: Session, email: str = DEFAULT_OWNER_EMAIL) -> User:
@@ -55,6 +59,7 @@ class ContentRepository:
                 platform_content_id=url.shortcode,
                 content_type=_content_type(url.kind),
                 creator_username=ref.creator_username,
+                caption=ref.caption,
                 first_captured_at=ref.captured_at,
                 extracted_data={"needs_url_resolution": True}
                 if url.kind is UrlKind.SHARE_LINK else {},
@@ -71,6 +76,8 @@ class ContentRepository:
             item.canonical_url_hash = url.url_hash
         if not item.creator_username and ref.creator_username:
             item.creator_username = ref.creator_username
+        if ref.caption and (not item.caption or ref.source_type in _AUTHORITATIVE_CAPTION):
+            item.caption = ref.caption
         if ref.captured_at and (
             item.first_captured_at is None
             or _naive(ref.captured_at) < _naive(item.first_captured_at)

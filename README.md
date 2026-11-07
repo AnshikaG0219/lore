@@ -84,6 +84,12 @@ backend/app/
     instagram/       archive (safe ZIP), detect, jsonutil, reader, inspector
       parsers/       saved_posts, collections, messages, shared_links, metadata
 backend/alembic/     migrations
-backend/tests/       unit/, integration/, fixtures/
+backend/tests/       unit/, integration/, fixtures/ (see fixtures/README.md)
 scripts/             inspect_instagram_export.py, import_instagram_export.py
 ```
+
+## Verified export format
+
+Tested against a real JSON export from 2026-11. See `docs/KNOWN_LIMITATIONS.md`. To check your
+own export without committing it:
+`cd backend && INSTABRAIN_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py`

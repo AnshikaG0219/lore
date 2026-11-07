@@ -1,25 +1,21 @@
 # Known Limitations
 
-## Awaiting real fixtures (highest priority)
+## Export format verification
 
-No real Instagram export was available during Phase 1. The test fixtures in
-`backend/tests/fixtures/synthetic_export_v1/` are **synthetic**, modelled on the structure commonly
-seen in Meta "Download your information" JSON exports. They are not authoritative. Specifically
-unverified:
+Verified against one real JSON export (2026-11-06, `your_instagram_activity/` layout):
 
-- `saved_posts.json`: assumed `{<list>: [{title: creator, string_map_data: {"Saved on": {href, timestamp}}}]}`.
-- `saved_collections.json`: assumed a **flat ordered list** where a record with a `Name` value and no
-  URL starts a collection and the following records with URLs belong to it. If real exports nest
-  items differently, `parsers/collections.py` must change.
-- `messages/inbox/<thread>/message_N.json`: assumed `participants`, `messages[].sender_name`,
-  `timestamp_ms`, `content`, `share.link`, `share.original_content_owner`, `title`, `thread_path`.
-- Folder names other than `inbox` (e.g. `message_requests`, archived threads) are classified by the
-  generic `messages/<folder>/<thread>/message_N.json` rule; not verified.
-- Group vs direct detection uses `participants > 2`. A group chat that has shrunk to 2 people will be
-  classified as direct.
+- `saved/saved_posts.json`: top-level list; `timestamp` + `label_values` (URL, Caption, Hashtags,
+  Owner → Name/Username, Brand partner). Some records repeat Caption/Title and omit Owner.
+- `saved/saved_collections.json`: one record per collection, items nested under a `Media` section.
+  **Items have no "added" timestamp**, so collection sources have `captured_at = NULL`. When the same
+  post is also in `saved_posts.json`, that source carries the save time.
+- `messages/{inbox,message_requests}/<thread>/message_N.json`: matched the assumed structure.
+  Message requests are imported as direct messages; the folder is visible in `conversation_id`.
 
-To validate: run `python -m scripts.inspect_instagram_export <real.zip> --json` and compare.
-Anonymised real excerpts should go in `backend/tests/fixtures/real/`.
+Still unverified: older/other export variants (the earlier flat `string_map_data` shapes are only
+supported as a fallback, tested with synthetic fixtures), multi-part exports, and HTML exports.
+Group vs direct detection uses `participants > 2` (in the real export this matched exactly the
+5 threads that have `joinable_mode`). A group that has shrunk to 2 people counts as direct.
 
 ## Export formats
 - **HTML exports are not parsed.** They are inventoried and reported as unsupported. Request the
@@ -31,7 +27,11 @@ Anonymised real excerpts should go in `backend/tests/fixtures/real/`.
 - `instagram.com/share/...` and `/s/...` links need a network redirect to obtain a shortcode. They are
   stored as content items with `needs_url_resolution` and keyed by URL, so one may later turn out to
   be a duplicate of a shortcode item. Resolution and merging are Phase 2.
-- Profile, story and other Instagram URLs are counted in reports but do not create content items.
+- Profile (including `/_u/<user>`), story and other Instagram URLs are counted in reports but do not
+  create content items. Stories expire after 24h and are rarely retrievable; 708 were found in the real
+  export, mostly story replies in DMs.
+- Captions from message shares (`share_text`) are previews; saved-post/collection captions replace
+  them. There is no manual caption editing yet, so this override is safe for now (see ADR-014).
 - Non-Instagram URLs in messages are ignored.
 
 ## Platform
