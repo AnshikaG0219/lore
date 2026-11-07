@@ -1,0 +1,19 @@
+{
+  "participants": [
+    {"name": "Test User"},
+    {"name": "Priya"},
+    {"name": "Rahul"}
+  ],
+  "messages": [
+    {
+      "sender_name": "Rahul",
+      "timestamp_ms": 1710000000000,
+      "share": {
+        "link": "https://www.instagram.com/tv/CaseSens01/",
+        "original_content_owner": "mountain_cafes"
+      }
+    }
+  ],
+  "title": "Weekend Plans",
+  "thread_path": "inbox/weekendplans_123"
+}

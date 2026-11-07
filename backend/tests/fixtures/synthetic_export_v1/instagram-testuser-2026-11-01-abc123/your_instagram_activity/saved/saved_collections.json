@@ -1,0 +1,43 @@
+{
+  "saved_saved_collections": [
+    {
+      "title": "Collection",
+      "string_map_data": {
+        "Name": {"value": "Ladakh Trip"},
+        "Creation Time": {"timestamp": 1716000000},
+        "Update Time": {"timestamp": 1717000000}
+      }
+    },
+    {
+      "string_map_data": {
+        "Name": {"href": "https://www.instagram.com/reel/C1aBcDeFgHi/", "value": "travel_with_meera"},
+        "Added Time": {"timestamp": 1717000100}
+      }
+    },
+    {
+      "string_map_data": {
+        "Name": {"href": "https://www.instagram.com/p/CaseSens01/", "value": "mountain_cafes"},
+        "Added Time": {"timestamp": 1717000200}
+      }
+    },
+    {
+      "title": "Collection",
+      "string_map_data": {
+        "Name": {"value": "Caf\u00c3\u00a9s & Books"},
+        "Creation Time": {"timestamp": 1716500000}
+      }
+    },
+    {
+      "string_map_data": {
+        "Name": {"href": "https://www.instagram.com/p/C2xYz_12345/", "value": "caf\u00c3\u00a9_hunter"},
+        "Added Time": {"timestamp": 1717100100}
+      }
+    },
+    {
+      "title": "Collection",
+      "string_map_data": {
+        "Name": {"value": "Empty Ideas"}
+      }
+    }
+  ]
+}

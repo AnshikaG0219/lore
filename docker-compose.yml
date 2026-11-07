@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: instabrain
+      POSTGRES_PASSWORD: instabrain
+      POSTGRES_DB: instabrain
+    ports:
+      - "${INSTABRAIN_PG_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U instabrain"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${INSTABRAIN_REDIS_HOST_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+    env_file: .env
+    environment:
+      INSTABRAIN_DATABASE_URL: postgresql+psycopg://instabrain:instabrain@postgres:5432/instabrain
+      INSTABRAIN_REDIS_URL: redis://redis:6379/0
+      INSTABRAIN_DATA_DIR: /data
+    volumes:
+      - importdata:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:
+  importdata:

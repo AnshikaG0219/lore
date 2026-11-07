@@ -1,0 +1,18 @@
+[project]
+name = "instabrain-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["postgres: requires a running PostgreSQL (INSTABRAIN_TEST_DATABASE_URL)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["B008"]  # FastAPI's Depends()/Security() in defaults is the idiomatic pattern

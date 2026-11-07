@@ -1,0 +1,38 @@
+{
+  "participants": [
+    {"name": "Test User"},
+    {"name": "Priya"},
+    {"name": "Rahul"}
+  ],
+  "messages": [
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1717400000000,
+      "content": "Look at this! https://instagram.com/reel/C1aBcDeFgHi?utm_source=ig_web_copy_link",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Rahul",
+      "timestamp_ms": 1717400100000,
+      "share": {
+        "link": "https://www.instagram.com/reel/CaseSens01/",
+        "share_text": "6 caf\u00c3\u00a9s you must visit in Leh",
+        "original_content_owner": "mountain_cafes"
+      }
+    },
+    {
+      "sender_name": "Test User",
+      "timestamp_ms": 1717400200000,
+      "content": "Private chat text that must never be stored."
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1717400300000,
+      "content": "and this profile instagram.com/mountain_cafes and a share link https://www.instagram.com/share/reel/BAbcdEfgh1/"
+    }
+  ],
+  "title": "Weekend Plans",
+  "is_still_participant": true,
+  "thread_path": "inbox/weekendplans_123",
+  "magic_words": []
+}

@@ -1,0 +1,23 @@
+{
+  "participants": [
+    {"name": "Priya"},
+    {"name": "Test User"}
+  ],
+  "messages": [
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1717500000000,
+      "share": {
+        "link": "https://www.instagram.com/p/casesens01/",
+        "share_text": "Different post: shortcodes are case-sensitive"
+      }
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1717500100000,
+      "content": "hi!"
+    }
+  ],
+  "title": "Priya",
+  "thread_path": "inbox/priya_456"
+}
