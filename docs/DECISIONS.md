@@ -150,9 +150,38 @@ files are photos/videos sent in chats. Fetching Reels from Instagram would be sc
 - All local: no media or audio leaves the machine. Only derived text goes to the LLM.
 - Each step (OCR per frame, transcript per asset) commits separately and is skipped if present,
   so failures keep partial results and retries never repeat work.
-- Media runs on its own queue `instabrain.media` (`media-worker`, concurrency 1) so CPU-heavy work
-  never delays imports. When all of an item's assets are done and a Copilot token is configured,
-  `instabrain.extraction.run` (queue `instabrain.ai`) re-extracts automatically.
+- Media processing runs inside the per-item pipeline job (ADR-021) on queue `instabrain.pipeline`,
+  separate from imports. Uploading media re-arms that item's job.
 - Extraction prompt v3 labels `caption` / `on_screen_text` / `spoken_transcript` separately and
   prefers on-screen text for names. Verified: speech "Herman Hesse" vs screen "Hermann Hesse"
   resolved to the on-screen spelling.
+
+## ADR-021: Content processing queue — one durable job per content item
+**Context:** Each post must be processed exactly once per change, survive crashes, retry transient
+failures, and record its stage (PRD §12). The import worker established the patterns.
+**Decision:**
+- `processing_jobs` is the queue: `UNIQUE(content_id, job_type)`, `job_type = content_pipeline`.
+  Enqueueing an active job is a no-op. A finished job is re-armed (same row) only on purpose:
+  new media, manual `POST /content/{id}/reprocess`, or a bulk enqueue with `only_new=false`.
+  Attempt history moves to `audit_logs` (migration moved the 10 trial rows).
+- PostgreSQL holds the state; Celery only delivers "run job X" (`instabrain.pipeline.run`, queue
+  `instabrain.pipeline`, rate limit `INSTABRAIN_PIPELINE_RATE_LIMIT`). Lost or duplicate messages
+  are harmless. The beat sweep (`instabrain.pipeline.sweep`) re-dispatches queued jobs that were
+  never or long ago dispatched, retries that are due, and running jobs with a stale heartbeat.
+- `claim` uses the same fencing token + row lock as imports, so only one runner writes a job.
+- Stages: VALIDATING → EXTRACTING_MEDIA/TRANSCRIBING (per asset) → STRUCTURING → COMPLETED |
+  NEEDS_MANUAL_INPUT | FAILED. Each is idempotent: media steps skip stored results, and
+  extraction is skipped when the input hash is unchanged.
+- Failures: AI provider errors or invalid output → `retry_wait` with exponential backoff (30s
+  doubling, cap 1h), up to `max_attempts` (5) → `FAILED`. No provider configured → `FAILED`
+  immediately (permanent until reprocessed). Transient DB errors leave the job to the sweep.
+- Outcome rule: if extraction says `information_sufficient=false` and there is no media text, the
+  item becomes `NEEDS_MANUAL_INPUT`. It is never silently "completed" with guessed content.
+- Cost control: nothing is queued automatically after imports unless
+  `INSTABRAIN_AUTO_PROCESS_IMPORTS=true`. Bulk enqueue takes an explicit limit and an optional
+  collection or import batch filter.
+- The Docker `pipeline-worker` is opt-in (`--profile pipeline`) because it needs a Copilot token.
+  The SDK downloads its runtime on first use. The token is passed through the environment, never
+  stored in the image or repo.
+**Verified:** 7 real items (collection "ladakh") queued via API through a host pipeline worker
+(Adobe Copilot): 5 completed, 2 needs_manual_input, 0 retries, ~11s each. Re-enqueue was ignored.

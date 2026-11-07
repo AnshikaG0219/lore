@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "int8"
     whisper_device: str = "cpu"
     copilot_model: str = "claude-haiku-5.5"
+    # Content processing queue
+    pipeline_rate_limit: str = "20/m"  # AI-bound jobs per worker process (Celery rate_limit)
+    pipeline_max_attempts: int = Field(default=5, gt=0)
+    pipeline_stale_seconds: int = Field(default=600, gt=0)
+    pipeline_redispatch_seconds: int = Field(default=6 * 3600, gt=0)
+    pipeline_sweep_batch: int = Field(default=500, gt=0)
+    auto_process_imports: bool = False  # cost control: queue new imports automatically?
+
     # GitHub token with Copilot access, used by the extraction task. Never logged.
     copilot_github_token: SecretStr | None = None
 

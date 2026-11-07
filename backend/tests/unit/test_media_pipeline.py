@@ -179,11 +179,15 @@ def test_extraction_input_uses_media_text_but_no_chat_data(session_factory, item
     assert "Private Chat" not in inp.prompt() and "Friend" not in inp.prompt()
 
 
-def test_upload_media_api(session_factory, item_id, tmp_path, monkeypatch):
+def test_upload_media_api(session_factory, item_id, tmp_path):
+    from app.processing.pipeline import PipelineRunner
+    from tests.unit.test_caption_extraction import VALID, FakeProvider
+
     settings = Settings(api_key="k", data_dir=tmp_path / "data")
-    engines = pl.MediaEngines(FakeOcr(), FakeTranscriber())
-    monkeypatch.setattr("app.processing.media.engines.build_engines", lambda s: engines)
-    app = create_app(session_factory, InlineImportDispatcher(session_factory, settings))
+    runner = PipelineRunner(session_factory, lambda: pl.MediaEngines(FakeOcr(), FakeTranscriber()),
+                            LocalMediaStore(settings.media_dir, 10**6),
+                            lambda: FakeProvider(json.dumps(VALID)))
+    app = create_app(session_factory, InlineImportDispatcher(session_factory, settings, runner))
     app.dependency_overrides[get_settings] = lambda: settings
     h = {"X-API-Key": "k"}
     with TestClient(app) as c:
@@ -193,6 +197,8 @@ def test_upload_media_api(session_factory, item_id, tmp_path, monkeypatch):
         assert r.status_code == 202, r.text
         files = r.json()["files"]
         assert files[0]["status"] == "completed" and files[1]["error"].startswith("Unsupported")
+        job = c.get(f"/api/v1/content/{item_id}/job", headers=h).json()
+        assert job["status"] == "completed" and job["result"]["sources"] == ["on_screen_text"]
         got = c.get(f"/api/v1/content/{item_id}/media", headers=h).json()
         assert got["on_screen_text"].startswith("5 BOOKS") and len(got["assets"]) == 1
         assert c.post(f"/api/v1/content/{item_id}/media", headers=h,

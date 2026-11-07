@@ -138,3 +138,25 @@ INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
 Or via the API: `POST /api/v1/content/{id}/media` (multipart `files`) and
 `GET /api/v1/content/{id}/media`. Requires `ffmpeg` and `tesseract`
 (`brew install ffmpeg tesseract tesseract-lang`). The Docker image includes both.
+
+## Processing queue (one job per post)
+
+Each post/Reel has exactly one processing job that moves through
+`QUEUED → VALIDATING → EXTRACTING_MEDIA/TRANSCRIBING → STRUCTURING → COMPLETED | NEEDS_MANUAL_INPUT | FAILED`,
+with automatic retries and crash recovery.
+
+```bash
+# start a pipeline worker (host; token only in this process's environment)
+cd backend && INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
+  INSTABRAIN_DATABASE_URL=postgresql+psycopg://instabrain:instabrain@localhost:5433/instabrain \
+  INSTABRAIN_REDIS_URL=redis://localhost:6380/0 \
+  .venv/bin/celery -A app.workers.celery_app worker -Q instabrain.pipeline --concurrency=1
+
+# queue work (explicit limits = cost control)
+curl -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+     -d '{"limit": 20, "collection": "ladakh"}' localhost:8000/api/v1/processing/enqueue
+curl -H "X-API-Key: $KEY" localhost:8000/api/v1/stats
+curl -H "X-API-Key: $KEY" "localhost:8000/api/v1/processing/jobs?status_filter=needs_manual_input"
+curl -X POST -H "X-API-Key: $KEY" localhost:8000/api/v1/content/<id>/reprocess
+```
+Or in Docker: `INSTABRAIN_COPILOT_GITHUB_TOKEN=... docker compose --profile pipeline up -d`.

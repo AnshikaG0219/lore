@@ -16,14 +16,13 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 
 IMPORT_QUEUE = "instabrain.imports"
-MEDIA_QUEUE = "instabrain.media"
-AI_QUEUE = "instabrain.ai"
+PIPELINE_QUEUE = "instabrain.pipeline"
 
 
 def create_celery() -> Celery:
     settings = get_settings()
     app = Celery("instabrain", broker=settings.redis_url,
-                 include=["app.workers.tasks", "app.workers.media_tasks"])
+                 include=["app.workers.tasks", "app.workers.pipeline_tasks"])
     app.conf.update(
         task_acks_late=True,
         task_reject_on_worker_lost=True,
@@ -32,10 +31,8 @@ def create_celery() -> Celery:
         task_serializer="json",
         accept_content=["json"],
         task_default_queue=IMPORT_QUEUE,
-        task_routes={
-            "instabrain.media.*": {"queue": MEDIA_QUEUE},
-            "instabrain.extraction.*": {"queue": AI_QUEUE},
-        },
+        task_routes={"instabrain.pipeline.run": {"queue": PIPELINE_QUEUE}},
+        task_annotations={"instabrain.pipeline.run": {"rate_limit": settings.pipeline_rate_limit}},
         broker_connection_retry_on_startup=True,
         broker_transport_options={
             "visibility_timeout": settings.broker_visibility_timeout_seconds
@@ -46,7 +43,11 @@ def create_celery() -> Celery:
             "sweep-imports": {
                 "task": "instabrain.imports.sweep",
                 "schedule": float(settings.import_sweep_interval_seconds),
-            }
+            },
+            "sweep-pipeline": {
+                "task": "instabrain.pipeline.sweep",
+                "schedule": float(settings.import_sweep_interval_seconds),
+            },
         },
     )
     return app
@@ -74,3 +75,4 @@ def _reset_db_pool(**_: object) -> None:
 def _sweep_on_start(sender=None, **_: object) -> None:
     # Pick up interrupted work as soon as a worker comes back, not only on the next beat tick.
     celery_app.send_task("instabrain.imports.sweep")
+    celery_app.send_task("instabrain.pipeline.sweep")

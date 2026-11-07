@@ -76,14 +76,22 @@ services:
     stop_grace_period: 60s
     restart: unless-stopped
 
-  media-worker:
+  pipeline-worker:
     <<: *backend
+    # Opt-in: needs INSTABRAIN_COPILOT_GITHUB_TOKEN (or run the pipeline worker on the host).
+    #   docker compose --profile pipeline up -d
+    profiles: ["pipeline"]
     depends_on:
       migrate:
         condition: service_completed_successfully
-    # OCR + Whisper are CPU-heavy; keep them off the import queue. One process per CPU-bound job.
+    environment:
+      INSTABRAIN_DATABASE_URL: postgresql+psycopg://instabrain:instabrain@postgres:5432/instabrain
+      INSTABRAIN_REDIS_URL: redis://redis:6379/0
+      INSTABRAIN_DATA_DIR: /data
+      INSTABRAIN_COPILOT_GITHUB_TOKEN: ${INSTABRAIN_COPILOT_GITHUB_TOKEN:-}
+    # One job at a time per process: OCR/Whisper are CPU-heavy and AI calls are rate-limited.
     command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO",
-              "--concurrency=1", "-Q", "instabrain.media", "-n", "media@%h"]
+              "--concurrency=1", "-Q", "instabrain.pipeline", "-n", "pipeline@%h"]
     stop_grace_period: 120s
     restart: unless-stopped
 

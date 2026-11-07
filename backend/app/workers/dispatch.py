@@ -26,7 +26,7 @@ class DispatchError(Exception):
 class ImportDispatcher(Protocol):
     def enqueue_import(self, batch_id: uuid.UUID) -> None: ...
 
-    def enqueue_media(self, asset_id: uuid.UUID) -> None: ...
+    def dispatch_pipeline(self, job_ids: list[uuid.UUID]) -> None: ...
 
     def is_healthy(self) -> bool: ...
 
@@ -43,13 +43,11 @@ class CeleryImportDispatcher:
         except Exception as exc:  # broker unreachable; the periodic sweep will pick it up
             raise DispatchError(str(exc)) from exc
 
-    def enqueue_media(self, asset_id: uuid.UUID) -> None:
-        from app.workers.media_tasks import process_media_task
+    def dispatch_pipeline(self, job_ids: list[uuid.UUID]) -> None:
+        from app.workers.pipeline_tasks import dispatch
 
-        try:
-            process_media_task.apply_async(args=[str(asset_id)], retry=False)
-        except Exception as exc:
-            raise DispatchError(str(exc)) from exc
+        if job_ids and dispatch(job_ids) < len(job_ids):
+            raise DispatchError("queue unreachable; the pipeline sweep will dispatch later")
 
     def is_healthy(self) -> bool:
         import redis
@@ -63,9 +61,13 @@ class CeleryImportDispatcher:
 
 
 class InlineImportDispatcher:
-    def __init__(self, session_factory: sessionmaker[Session], settings: Settings) -> None:
+    """Runs work synchronously in the caller (tests, local use without Redis)."""
+
+    def __init__(self, session_factory: sessionmaker[Session], settings: Settings,
+                 runner=None) -> None:
         self.session_factory = session_factory
         self.settings = settings
+        self._runner = runner
 
     def enqueue_import(self, batch_id: uuid.UUID) -> None:
         try:
@@ -74,13 +76,13 @@ class InlineImportDispatcher:
         except ImportInProgressError:
             log.warning("import_already_running", extra={"batch_id": str(batch_id)})
 
-    def enqueue_media(self, asset_id: uuid.UUID) -> None:
-        from app.processing.media.engines import build_engines, build_store
-        from app.processing.media.pipeline import process_asset
+    def dispatch_pipeline(self, job_ids: list[uuid.UUID]) -> None:
+        if self._runner is None:
+            from app.processing.factory import build_runner
 
-        with self.session_factory() as session:
-            process_asset(session, asset_id, build_engines(self.settings),
-                          build_store(self.settings))
+            self._runner = build_runner(self.settings, self.session_factory)
+        for job_id in job_ids:
+            self._runner.run(job_id)
 
     def is_healthy(self) -> bool:
         return True

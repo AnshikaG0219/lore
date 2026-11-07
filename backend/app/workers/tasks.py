@@ -73,7 +73,22 @@ def run_import_task(self: Task, batch_id: str, takeover: bool = False) -> dict[s
         log.exception("import_task_failed", extra={"batch_id": batch_id})
         _mark_failed(factory, bid, f"Unexpected error: {exc!r}. Use resume to continue.")
         raise
+    if settings.auto_process_imports:
+        _queue_imported_content(factory, bid, settings)
     return {"batch_id": batch_id, "status": report["status"]}
+
+
+def _queue_imported_content(factory, batch_id: uuid.UUID, settings) -> None:
+    from app.processing import queue
+    from app.processing.selection import select_for_processing
+    from app.workers.pipeline_tasks import dispatch
+
+    with factory() as session:
+        ids = select_for_processing(session, limit=100_000, import_batch_id=batch_id)
+        jobs = [queue.enqueue(session, cid, reason="import",
+                              max_attempts=settings.pipeline_max_attempts) for cid in ids]
+        session.commit()
+    dispatch([j.job_id for j in jobs if j.should_dispatch])
 
 
 def _mark_failed(factory: sessionmaker[Session], batch_id: uuid.UUID, message: str) -> None:

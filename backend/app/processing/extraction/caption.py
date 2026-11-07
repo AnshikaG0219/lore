@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ContentItem, ContentSource, ProcessingJob
+from app.db.models import AuditLog, ContentItem, ContentSource
 from app.processing.ai.provider import Completion, LLMProvider, ProviderError
 from app.processing.extraction.schema import PROMPT_VERSION, CaptionExtraction, Category
 
@@ -217,16 +217,17 @@ def persist_success(session: Session, item: ContentItem, inp: ExtractionInput,
             },
         },
     }
-    session.add(ProcessingJob(content_id=item.id, job_type=JOB_TYPE, stage="STRUCTURING",
-                              status="completed", retry_count=result.attempts - 1,
-                              started_at=started_at, completed_at=now))
+    session.add(AuditLog(entity_type="content_item", entity_id=item.id,
+                         action=f"{JOB_TYPE}.completed",
+                         details={"attempts": result.attempts, "model": result.completion.model,
+                                  "sources": inp.sources, "started_at": started_at.isoformat()}))
 
 
 def persist_failure(session: Session, item_id: uuid.UUID, error: str,
                     started_at: datetime) -> None:
-    session.add(ProcessingJob(content_id=item_id, job_type=JOB_TYPE, stage="STRUCTURING",
-                              status="failed", error_message=error[:2000],
-                              started_at=started_at, completed_at=datetime.now(UTC)))
+    session.add(AuditLog(entity_type="content_item", entity_id=item_id,
+                         action=f"{JOB_TYPE}.failed",
+                         details={"error": error[:2000], "started_at": started_at.isoformat()}))
 
 
 async def process_item(session: Session, item: ContentItem, provider: LLMProvider,

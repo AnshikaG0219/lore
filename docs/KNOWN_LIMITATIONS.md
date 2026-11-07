@@ -67,6 +67,15 @@ Group vs direct detection uses `participants > 2` (in the real export this match
   transcribed with variable quality.
 - `small` Whisper on CPU runs at roughly real time or faster on Apple Silicon. It's slower in Docker
   on amd64 or under emulation. The model (~480 MB) downloads once into the `models` volume.
-- Automatic extraction after media processing needs the Copilot runtime. The Docker image doesn't
-  include the Copilot CLI yet, so in Docker media processing works but extraction must run on the
-  host (`scripts/add_media.py --extract` or `scripts/extract_captions.py`).
+- The pipeline worker needs a Copilot token. In Docker it's opt-in (`--profile pipeline`) and
+  downloads the Copilot runtime on first start (not yet verified inside the container). Verified
+  path: pipeline worker on the host.
+
+## Processing queue
+- One pipeline worker process runs one job at a time (CPU-bound media + rate-limited AI). At ~11s
+  per caption-only item, all ~2,579 items take ~8h on one worker. More workers scale linearly but
+  multiply AI usage.
+- A queued backlog larger than what one sweep can dispatch is drained over several sweeps
+  (`INSTABRAIN_PIPELINE_SWEEP_BATCH`, default 500 per minute).
+- Re-dispatch of long-queued jobs (default after 6h) can send a duplicate message. That's
+  harmless because `claim` skips it, but it appears in worker logs.

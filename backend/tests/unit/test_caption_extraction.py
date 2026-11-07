@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from app.db.models import ContentItem, ContentSource, ProcessingJob
+from app.db.models import AuditLog, ContentItem, ContentSource
 from app.db.repositories.content import get_or_create_user
 from app.processing.ai.provider import Completion, ProviderError
 from app.processing.extraction.caption import (
@@ -101,7 +101,7 @@ def test_success_persists_and_caches(session_factory, item):
         it = s.get(ContentItem, item)
         assert it.primary_category == "travel" and it.extraction_confidence == 0.8
         assert it.extracted_data[JOB_TYPE]["_meta"]["model"] == "fake-1"
-        assert s.scalar(select(ProcessingJob.status)) == "completed"
+        assert s.scalar(select(AuditLog.action)) == "caption_extraction.completed"
     # unchanged input → skipped without calling the provider
     assert _run(session_factory, item, FakeProvider())["reason"] == "up to date"
 
@@ -117,6 +117,6 @@ def test_failures_are_recorded_not_raised(session_factory, item):
     assert _run(session_factory, item, FakeProvider("x", "y"))["status"] == "failed"
     assert _run(session_factory, item, FakeProvider(ProviderError("quota")))["status"] == "failed"
     with session_factory() as s:
-        jobs = s.scalars(select(ProcessingJob)).all()
-        assert [j.status for j in jobs] == ["failed", "failed"]
+        actions = s.scalars(select(AuditLog.action)).all()
+        assert actions == ["caption_extraction.failed", "caption_extraction.failed"]
         assert s.get(ContentItem, item).primary_category is None  # nothing half-written

@@ -73,7 +73,8 @@ Phase 1 parsing is verified, and the durable worker is done (ADR-016/017). **Pha
 | LLM provider interface + Copilot SDK provider | ✅ | ADR-018 |
 | Category-aware validated schema (16 categories, evidence per entity) | ✅ | `processing/extraction/schema.py` |
 | Caption classification + extraction | 🟡 | Trial: 10/10 succeeded (2 needed a retry), ~15 s/item, `claude-haiku-5.5` |
-| Run as Celery task over all captioned items | 🟡 | Per-item task `instabrain.extraction.run` exists; bulk run still via `scripts/extract_captions.py` |
+| Processing queue: one job per item, stages, retries, sweep | ✅ | ADR-021; API `/processing/enqueue`, `/processing/jobs`, `/stats`, `/content/{id}/reprocess`, `/content/{id}/job` |
+| Process all ~2,579 items | ⏳ | Pending decision on AI account/cost; `POST /processing/enqueue {"limit": N}` |
 | Manual media upload (API + CLI) | ✅ | ADR-020 |
 | Image OCR (Tesseract eng+hin) | ✅ | Real-engine test: slide text read at 0.97 confidence |
 | Video transcription (faster-whisper small) + frame OCR | ✅ | Real-engine test + Docker media-worker e2e |

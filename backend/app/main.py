@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.v1 import content, imports, system
+from app.api.v1 import content, imports, processing, system
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.workers.dispatch import ImportDispatcher, build_dispatcher
@@ -23,6 +23,7 @@ def create_app(
     app.include_router(system.router)
     app.include_router(imports.router, prefix="/api/v1")
     app.include_router(content.router, prefix="/api/v1")
+    app.include_router(processing.router, prefix="/api/v1")
     return app
 
 
