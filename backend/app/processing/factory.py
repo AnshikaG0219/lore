@@ -19,7 +19,7 @@ def provider_factory(settings: Settings):
         if "p" not in cache:
             if not settings.copilot_github_token:
                 raise ProviderNotConfiguredError(
-                    "AI provider not configured (set INSTABRAIN_COPILOT_GITHUB_TOKEN); "
+                    "AI provider not configured (set LORE_COPILOT_GITHUB_TOKEN); "
                     "reprocess the item once configured")
             from app.processing.ai.copilot_sdk import CopilotSdkProvider
 

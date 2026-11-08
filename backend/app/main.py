@@ -17,7 +17,7 @@ def create_app(
 ) -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
-    app = FastAPI(title="InstaBrain", version="0.1.0")
+    app = FastAPI(title="Lore", version="0.1.0")
     if session_factory is None:
         from app.db.session import get_sessionmaker
 

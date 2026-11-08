@@ -141,7 +141,7 @@ def test_requires_api_key(client):
 def test_dashboard_served_with_security_headers(client):
     assert client.get("/", follow_redirects=False).headers["location"] == "/dashboard/"
     r = client.get("/dashboard/")
-    assert r.status_code == 200 and "InstaBrain" in r.text
+    assert r.status_code == 200 and "Lore" in r.text
     csp = r.headers["content-security-policy"]
     assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
     js = client.get("/dashboard/app.js").text

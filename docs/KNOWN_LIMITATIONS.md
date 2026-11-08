@@ -46,13 +46,13 @@ Group vs direct detection uses `participants > 2` (in the real export this match
   than the stale threshold triggers a takeover. This is safe (fencing token) but wastes work.
 - Run exactly **one** `beat` process. Several beats only cause duplicate sweeps, which are harmless
   but noisy.
-- Upload and worker must share `INSTABRAIN_DATA_DIR` (one Docker volume). A multi-host deployment
+- Upload and worker must share `LORE_DATA_DIR` (one Docker volume). A multi-host deployment
   needs object storage (planned abstraction).
 - Concurrent imports of *different* batches that share content rely on DB unique constraints. On a
   race, one file may fail with a persistence error and is reported. Re-importing fixes it.
 - Files that failed permanently (e.g. malformed JSON) are not retried by resume. Re-upload a fixed
   export instead.
-- Uploaded archives are kept in `INSTABRAIN_DATA_DIR/uploads`; no retention/cleanup policy yet.
+- Uploaded archives are kept in `LORE_DATA_DIR/uploads`; no retention/cleanup policy yet.
 - pgvector extension is not enabled yet (Phase 6). `media_assets`, `transcripts`, `content_chunks`
   tables are deferred to the phases that use them.
 
@@ -76,6 +76,6 @@ Group vs direct detection uses `participants > 2` (in the real export this match
   per caption-only item, all ~2,579 items take ~8h on one worker. More workers scale linearly but
   multiply AI usage.
 - A queued backlog larger than what one sweep can dispatch is drained over several sweeps
-  (`INSTABRAIN_PIPELINE_SWEEP_BATCH`, default 500 per minute).
+  (`LORE_PIPELINE_SWEEP_BATCH`, default 500 per minute).
 - Re-dispatch of long-queued jobs (default after 6h) can send a duplicate message. That's
   harmless because `claim` skips it, but it appears in worker logs.

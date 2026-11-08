@@ -50,7 +50,7 @@ read in memory to search for links and then discarded; it is never persisted or 
 ## ADR-009: Enums stored as strings; JSON columns portable
 Status enums are `String` columns (no PostgreSQL ENUM types → easier migrations). JSON columns use
 `JSON().with_variant(JSONB, "postgresql")` so unit tests run on SQLite while production uses JSONB.
-The DB test suite runs on both when `INSTABRAIN_TEST_DATABASE_URL` is set.
+The DB test suite runs on both when `LORE_TEST_DATABASE_URL` is set.
 
 ## ADR-010: Mojibake repair
 Meta JSON exports commonly encode UTF-8 as Latin-1 code points. `repair_text` reverses it only when
@@ -58,7 +58,7 @@ the round-trip is lossless, leaving correct text untouched.
 
 ## ADR-011: Single default owner user
 `content_items.user_id` is NOT NULL and uniqueness is `(user_id, identity_key)`. Phase 1 attaches all
-imports to a default `owner@instabrain.local` user. Multi-user ownership requires auth (Phase 4/5).
+imports to a default `owner@lore.local` user. Multi-user ownership requires auth (Phase 4/5).
 
 ## ADR-012: API-key auth for admin endpoints in Phase 1
 All `/api/v1/*` routes require `X-API-Key` (constant-time compare). If no key is configured the API
@@ -90,7 +90,7 @@ if stories become capturable through an authorised route.
 **Context:** PRD §18 requires that background jobs survive API restarts and that captured data is
 never lost if workers crash.
 **Decision:**
-- The API persists the batch first and only then enqueues `instabrain.imports.run`. If enqueueing
+- The API persists the batch first and only then enqueues `lore.imports.run`. If enqueueing
   fails (Redis down) the upload still returns 202 and the batch stays `pending`.
 - Celery: `acks_late`, `reject_on_worker_lost`, `prefetch_multiplier=1`, JSON serialisation, no
   result backend (state lives in PostgreSQL). Redis runs with AOF persistence.
@@ -136,7 +136,7 @@ advanced yet, because caption extraction is only one stage and media stages rema
 files are photos/videos sent in chats. Fetching Reels from Instagram would be scraping (PRD §13/§19).
 **Decision:**
 - Media is attached by the user (`POST /api/v1/content/{id}/media` or `scripts/add_media.py`).
-  Files are content-addressed under `INSTABRAIN_DATA_DIR/media/<content_id>/<sha256>.<ext>`, typed
+  Files are content-addressed under `LORE_DATA_DIR/media/<content_id>/<sha256>.<ext>`, typed
   by magic bytes (JPEG/PNG/WebP/HEIC, MP4/MOV, M4A/MP3/WAV), size-limited and never executed.
   Re-uploading the same file is a no-op.
 - **OCR: Tesseract** (`eng+hin`), on greyscale images upscaled to at least 1000px. Words below
@@ -150,7 +150,7 @@ files are photos/videos sent in chats. Fetching Reels from Instagram would be sc
 - All local: no media or audio leaves the machine. Only derived text goes to the LLM.
 - Each step (OCR per frame, transcript per asset) commits separately and is skipped if present,
   so failures keep partial results and retries never repeat work.
-- Media processing runs inside the per-item pipeline job (ADR-021) on queue `instabrain.pipeline`,
+- Media processing runs inside the per-item pipeline job (ADR-021) on queue `lore.pipeline`,
   separate from imports. Uploading media re-arms that item's job.
 - Extraction prompt v3 labels `caption` / `on_screen_text` / `spoken_transcript` separately and
   prefers on-screen text for names. Verified: speech "Herman Hesse" vs screen "Hermann Hesse"
@@ -164,9 +164,9 @@ failures, and record its stage (PRD §12). The import worker established the pat
   Enqueueing an active job is a no-op. A finished job is re-armed (same row) only on purpose:
   new media, manual `POST /content/{id}/reprocess`, or a bulk enqueue with `only_new=false`.
   Attempt history moves to `audit_logs` (migration moved the 10 trial rows).
-- PostgreSQL holds the state; Celery only delivers "run job X" (`instabrain.pipeline.run`, queue
-  `instabrain.pipeline`, rate limit `INSTABRAIN_PIPELINE_RATE_LIMIT`). Lost or duplicate messages
-  are harmless. The beat sweep (`instabrain.pipeline.sweep`) re-dispatches queued jobs that were
+- PostgreSQL holds the state; Celery only delivers "run job X" (`lore.pipeline.run`, queue
+  `lore.pipeline`, rate limit `LORE_PIPELINE_RATE_LIMIT`). Lost or duplicate messages
+  are harmless. The beat sweep (`lore.pipeline.sweep`) re-dispatches queued jobs that were
   never or long ago dispatched, retries that are due, and running jobs with a stale heartbeat.
 - `claim` uses the same fencing token + row lock as imports, so only one runner writes a job.
 - Stages: VALIDATING → EXTRACTING_MEDIA/TRANSCRIBING (per asset) → STRUCTURING → COMPLETED |
@@ -178,7 +178,7 @@ failures, and record its stage (PRD §12). The import worker established the pat
 - Outcome rule: if extraction says `information_sufficient=false` and there is no media text, the
   item becomes `NEEDS_MANUAL_INPUT`. It is never silently "completed" with guessed content.
 - Cost control: nothing is queued automatically after imports unless
-  `INSTABRAIN_AUTO_PROCESS_IMPORTS=true`. Bulk enqueue takes an explicit limit and an optional
+  `LORE_AUTO_PROCESS_IMPORTS=true`. Bulk enqueue takes an explicit limit and an optional
   collection or import batch filter.
 - The Docker `pipeline-worker` is opt-in (`--profile pipeline`) because it needs a Copilot token.
   The SDK downloads its runtime on first use. The token is passed through the environment, never

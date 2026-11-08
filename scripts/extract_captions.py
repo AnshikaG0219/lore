@@ -1,7 +1,7 @@
 """Classify and extract structured knowledge from captions (Phase 2, step 1).
 
 Usage:
-    INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -u <account>) \\
+    LORE_COPILOT_GITHUB_TOKEN=$(gh auth token -u <account>) \\
       python -m scripts.extract_captions --limit 10 [--model claude-haiku-5.5]
     python -m scripts.extract_captions --collections books,ladakh --per-collection 2
     python -m scripts.extract_captions --limit 3 --dry-run     # show prompts, call nothing
@@ -64,7 +64,7 @@ async def _run(args) -> int:
                 print(f"\n=== {item.canonical_url} ===\n{inp.prompt() if inp else '(no caption)'}")
             return 0
 
-        token = os.environ.get("INSTABRAIN_COPILOT_GITHUB_TOKEN", "")
+        token = os.environ.get("LORE_COPILOT_GITHUB_TOKEN", "")
         from app.processing.ai.copilot_sdk import CopilotSdkProvider
 
         provider = CopilotSdkProvider(token, args.model)

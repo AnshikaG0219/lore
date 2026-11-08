@@ -17,7 +17,7 @@ the real `label_values` format (old shape kept as fallback). See ADR-013.
 |---|---|---|---|
 | 1 | Python backend (FastAPI, Pydantic v2, SQLAlchemy 2, Alembic) | ✅ | `backend/app` |
 | 2 | PostgreSQL | ✅ | `pgvector/pgvector:pg16` image (extension not yet enabled; Phase 6) |
-| 3 | Docker Compose (postgres, redis, api) | ✅ | Host ports configurable via `INSTABRAIN_PG_HOST_PORT` / `INSTABRAIN_REDIS_HOST_PORT` |
+| 3 | Docker Compose (postgres, redis, api) | ✅ | Host ports configurable via `LORE_PG_HOST_PORT` / `LORE_REDIS_HOST_PORT` |
 | 4 | Database models + initial migration | ✅ | users, content_items, content_sources, import_batches, import_files, raw_import_records, processing_jobs, audit_logs |
 | 5 | Safe ZIP inspection | ✅ | No extraction to disk; traversal/symlink/encrypted/zip-bomb/size/CRC checks |
 | 6 | Saved-post + collection parsing | ✅ | Verified on real export: 103 saved posts, 9 collections / 61 items, creator + caption + hashtags |
@@ -26,7 +26,7 @@ the real `label_values` format (old shape kept as fallback). See ADR-013.
 | 9 | URL normalisation | ✅ | Case-sensitive shortcode identity; `/p` `/reel` `/reels` `/tv`, `instagr.am`, `/{user}/reel/…`, tracking params |
 | 10 | Deduplication | ✅ | By shortcode; one `content_item`, many `content_sources` |
 | 11 | Import reporting | ✅ | CLI text/JSON + persisted `import_batches.report` + API |
-| 12 | Tests with representative fixtures | ✅ | 103 tests (SQLite + PostgreSQL); `real_shape_2026_11` fixture mirrors the real structure; real ZIP smoke test via `INSTABRAIN_REAL_EXPORT` |
+| 12 | Tests with representative fixtures | ✅ | 103 tests (SQLite + PostgreSQL); `real_shape_2026_11` fixture mirrors the real structure; real ZIP smoke test via `LORE_REAL_EXPORT` |
 | — | `python -m scripts.inspect_instagram_export` | ✅ | |
 | — | `python -m scripts.import_instagram_export` (resumable) | ✅ | `--resume <id> [--force]` |
 | — | Celery worker + beat sweep, fencing token, retries with backoff | ✅ | `app/workers/`; Compose services `worker`, `beat`, `migrate` |
@@ -64,7 +64,7 @@ Phase 1 parsing is verified, and the durable worker is done (ADR-016/017). **Pha
 | Background jobs survive API restarts | ✅ Jobs run on the worker; state in PostgreSQL; queue in Redis (AOF) |
 | Failed jobs can be retried | ✅ Automatic (transient), sweep (crashed), `POST /imports/{id}/resume` (manual) |
 | Partial results are retained | ✅ Per-file commits |
-| Errors are logged | ✅ Structured logs (`INSTABRAIN_LOG_JSON=true` for JSON) |
+| Errors are logged | ✅ Structured logs (`LORE_LOG_JSON=true` for JSON) |
 
 ## Phase 2 — Content Extraction Pipeline 🟡 (started 2026-11-07)
 

@@ -1,4 +1,4 @@
-# InstaBrain — Architecture & Flow
+# Lore — Architecture & Flow
 
 Rendered SVGs are in [`diagrams/`](diagrams/) (regenerate (outputs flow-N.svg) with
 `npx -p @mermaid-js/mermaid-cli mmdc -i docs/ARCHITECTURE.md -o docs/diagrams/flow.svg`).
@@ -24,7 +24,7 @@ flowchart TD
         STATS["GET /stats · /processing/jobs<br/>/content/{id}/job · /content/{id}/media"]
     end
 
-    subgraph Import["Import worker — queue instabrain.imports"]
+    subgraph Import["Import worker — queue lore.imports"]
         SAFE["Safe ZIP reader<br/>no extraction · traversal / symlink / bomb checks"]
         DETECT["Classify files<br/>path suffix → JSON shape"]
         PARSE["Parsers<br/>saved_posts · saved_collections · messages"]
@@ -33,7 +33,7 @@ flowchart TD
         CKPT["Per-file checkpoint<br/>import_files (resumable)"]
     end
 
-    subgraph Pipeline["Pipeline worker — queue instabrain.pipeline (1 job per post)"]
+    subgraph Pipeline["Pipeline worker — queue lore.pipeline (1 job per post)"]
         VAL["VALIDATING"]
         MED["EXTRACTING_MEDIA / TRANSCRIBING<br/>Tesseract OCR · ffmpeg frames · faster-whisper"]
         STR["STRUCTURING<br/>LLM via Copilot SDK (no tools)<br/>→ Pydantic schema, 1 corrective retry"]
@@ -123,7 +123,7 @@ sequenceDiagram
     U->>API: POST /imports (ZIP)
     API->>API: stream to disk · size limit · ZIP magic bytes
     API->>PG: import_batch (pending)
-    API->>R: instabrain.imports.run(batch)
+    API->>R: lore.imports.run(batch)
     API-->>U: 202 {id, status: pending}
     R->>W: deliver task
     W->>PG: claim batch (runner_id, heartbeat)

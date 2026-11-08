@@ -33,7 +33,7 @@ def _close_runner(**_: object) -> None:
         _runner.close()
 
 
-@celery_app.task(name="instabrain.pipeline.run")
+@celery_app.task(name="lore.pipeline.run")
 def run_pipeline_task(job_id: str) -> dict[str, Any]:
     return _get_runner().run(uuid.UUID(job_id))
 
@@ -55,7 +55,7 @@ def dispatch(job_ids: list[uuid.UUID]) -> int:
     return len(sent)
 
 
-@celery_app.task(name="instabrain.pipeline.sweep")
+@celery_app.task(name="lore.pipeline.sweep")
 def sweep_pipeline_task() -> int:
     settings = get_settings()
     with _factory()() as session:
