@@ -3,7 +3,7 @@
 Usage:
     python -m scripts.add_media <instagram-url|shortcode|content-id> file1.jpg file2.mp4 ...
     python -m scripts.add_media <SHORTCODE> reel.mp4 --process            # run now, in-process
-    INSTABRAIN_COPILOT_GITHUB_TOKEN=... python -m scripts.add_media <SHORTCODE> reel.mp4 \\
+    LORE_COPILOT_GITHUB_TOKEN=... python -m scripts.add_media <SHORTCODE> reel.mp4 \\
         --process --extract                                              # then re-extract
 
 Without --process the files are queued for the media worker.
@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             from app.processing.ai.copilot_sdk import CopilotSdkProvider
             from app.processing.extraction.caption import JOB_TYPE, process_item
 
-            token = os.environ.get("INSTABRAIN_COPILOT_GITHUB_TOKEN", "")
+            token = os.environ.get("LORE_COPILOT_GITHUB_TOKEN", "")
 
             async def run():
                 provider = CopilotSdkProvider(token, settings.copilot_model)

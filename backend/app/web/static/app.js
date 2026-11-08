@@ -1,5 +1,5 @@
 "use strict";
-// InstaBrain dashboard. All data is rendered with textContent via h() — never innerHTML —
+// Lore dashboard. All data is rendered with textContent via h() — never innerHTML —
 // because captions and titles are untrusted text.
 
 const API = "/api/v1";
@@ -60,7 +60,7 @@ function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = fal
 
 // ---------- API ----------
 async function api(path, opts = {}) {
-  const key = sessionStorage.getItem("instabrain-key");
+  const key = sessionStorage.getItem("lore-key");
   const res = await fetch(API + path, { ...opts,
     headers: { "X-API-Key": key || "", "Content-Type": "application/json", ...(opts.headers || {}) } });
   if (res.status === 401) { showLogin("That API key was rejected."); throw new Error("unauthorized"); }
@@ -75,10 +75,10 @@ function showLogin(msg = "") {
 }
 $("#login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  sessionStorage.setItem("instabrain-key", $("#api-key").value.trim());
+  sessionStorage.setItem("lore-key", $("#api-key").value.trim());
   $("#login").hidden = true; await boot();
 });
-$("#logout").addEventListener("click", () => { sessionStorage.removeItem("instabrain-key"); showLogin(); });
+$("#logout").addEventListener("click", () => { sessionStorage.removeItem("lore-key"); showLogin(); });
 
 // ---------- navigation ----------
 function show(view) {
@@ -270,7 +270,7 @@ $("#places-q").addEventListener("input", () => { clearTimeout(debounce); debounc
 
 // ---------- start ----------
 async function boot() {
-  if (!sessionStorage.getItem("instabrain-key")) return showLogin();
+  if (!sessionStorage.getItem("lore-key")) return showLogin();
   try { await loadOverview(); show("overview"); } catch (e) { if (e.message !== "unauthorized") toast(e.message); }
 }
 boot();

@@ -1,7 +1,7 @@
-# InstaBrain — Personal Content Intelligence & Knowledge Management System
+# Lore — Personal Content Intelligence & Knowledge Management System
 
 **Document Type:** Product Requirements Document (PRD) + Software Architecture Specification  
-**Project Name:** InstaBrain  
+**Project Name:** Lore  
 **Version:** 1.0  
 **Status:** Initial Development Specification  
 **Target User:** Single-user personal application (designed for future multi-user support)  
@@ -70,7 +70,7 @@ The application should allow the user to import historical Instagram data.
 Expected workflow:
 
 1. User downloads their Instagram account information using Instagram's Accounts Center export functionality.
-2. User uploads the exported ZIP file to InstaBrain.
+2. User uploads the exported ZIP file to Lore.
 3. The application inspects the ZIP archive.
 4. It identifies relevant files containing:
    - Saved posts.
@@ -97,8 +97,8 @@ The user discovers a useful Reel and wants it added to their personal knowledge 
 Expected workflow:
 
 1. User shares the Reel through Instagram's native Share functionality.
-2. User sends the link to an InstaBrain capture endpoint.
-3. InstaBrain receives the URL.
+2. User sends the link to an Lore capture endpoint.
+3. Lore receives the URL.
 4. The URL is validated and normalised.
 5. The system checks whether the content already exists.
 6. If new, the content is added to the processing queue.
@@ -1365,7 +1365,7 @@ Implement:
 
 Use a clean, maintainable repository structure.
 
-instabrain/
+lore/
 │
 ├── backend/
 │   ├── app/
@@ -1759,14 +1759,14 @@ The first phase should be independently runnable, testable and documented.
 
 # 21. Final Product Vision
 
-InstaBrain should eventually become the user's personal knowledge layer across social platforms.
+Lore should eventually become the user's personal knowledge layer across social platforms.
 
 Instagram is only the first source.
 
 The long-term experience should be:
 
 - Save something interesting.
-- Share it with InstaBrain.
+- Share it with Lore.
 - Let the system understand it.
 - Store the information automatically.
 - Ask questions whenever needed.

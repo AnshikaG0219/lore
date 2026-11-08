@@ -120,7 +120,7 @@ def format_report(report: InspectionReport, max_items: int = 20) -> str:
     d = report.to_dict()
     e = report.export
     lines = [
-        "InstaBrain — Instagram export inspection",
+        "Lore — Instagram export inspection",
         "=" * 44,
         f"Layout: {e.layout}   Root folder: {e.root_prefix or '(none)'}",
         f"Files discovered: {e.total_files} ({e.total_bytes:,} bytes)  formats={e.formats}",

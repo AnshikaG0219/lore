@@ -24,7 +24,7 @@ name), a group thread with reel/story/`_u` profile shares, and a `message_reques
 ## Running against your own export (not committed)
 
 ```bash
-INSTABRAIN_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py
+LORE_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py
 ```
 
 ## `real/` — anonymised real exports (optional)

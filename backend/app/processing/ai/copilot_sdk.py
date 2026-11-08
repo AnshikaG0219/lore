@@ -52,7 +52,7 @@ class CopilotSdkProvider:
         try:
             session = await client.create_session(
                 model=self.model,
-                session_id=f"instabrain-{uuid.uuid4()}",
+                session_id=f"lore-{uuid.uuid4()}",
                 system_message={"mode": "replace", "content": system},
                 available_tools=[],
                 tools=[],

@@ -13,7 +13,7 @@ from app.ingestion.deduplication import merge_content_type
 from app.ingestion.instagram.models import ContentReference, SourceType
 from app.ingestion.url_parser import UrlKind
 
-DEFAULT_OWNER_EMAIL = "owner@instabrain.local"
+DEFAULT_OWNER_EMAIL = "owner@lore.local"
 
 # Saved records carry the post's full caption; message shares only carry a preview
 # (share_text). Saved captions therefore replace message captions, never the reverse.

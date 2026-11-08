@@ -44,13 +44,13 @@ def _sqlite_factory():
 
 @pytest.fixture(params=["sqlite", "postgres"])
 def session_factory(request):
-    """Run DB tests on SQLite always, and on PostgreSQL when INSTABRAIN_TEST_DATABASE_URL is set."""
+    """Run DB tests on SQLite always, and on PostgreSQL when LORE_TEST_DATABASE_URL is set."""
     if request.param == "sqlite":
         yield _sqlite_factory()
         return
-    url = os.environ.get("INSTABRAIN_TEST_DATABASE_URL")
+    url = os.environ.get("LORE_TEST_DATABASE_URL")
     if not url:
-        pytest.skip("INSTABRAIN_TEST_DATABASE_URL not set")
+        pytest.skip("LORE_TEST_DATABASE_URL not set")
     engine = create_engine(url)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)

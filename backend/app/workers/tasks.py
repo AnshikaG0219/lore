@@ -38,7 +38,7 @@ def backoff_seconds(retries: int, base: int = 5) -> int:
     return min(base * 2**retries, MAX_BACKOFF_SECONDS)
 
 
-@celery_app.task(bind=True, name="instabrain.imports.run", max_retries=None)
+@celery_app.task(bind=True, name="lore.imports.run", max_retries=None)
 def run_import_task(self: Task, batch_id: str, takeover: bool = False) -> dict[str, Any]:
     settings = get_settings()
     factory = _factory()
@@ -106,7 +106,7 @@ def _mark_failed(factory: sessionmaker[Session], batch_id: uuid.UUID, message: s
         log.exception("import_mark_failed_error", extra={"batch_id": str(batch_id)})
 
 
-@celery_app.task(name="instabrain.imports.sweep")
+@celery_app.task(name="lore.imports.sweep")
 def sweep_imports_task() -> list[str]:
     settings = get_settings()
     with _factory()() as session:

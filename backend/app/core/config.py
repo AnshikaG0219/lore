@@ -7,11 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="INSTABRAIN_", env_file=".env", extra="ignore",
+    model_config = SettingsConfigDict(env_prefix="LORE_", env_file=".env", extra="ignore",
                                       frozen=True)
 
     env: str = "development"
-    database_url: str = "postgresql+psycopg://instabrain:instabrain@localhost:5432/instabrain"
+    database_url: str = "postgresql+psycopg://lore:lore@localhost:5432/lore"
     redis_url: str = "redis://localhost:6379/0"
     api_key: SecretStr | None = None
     data_dir: Path = Path("./data")

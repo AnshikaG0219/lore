@@ -6,7 +6,7 @@ Instagram (saved collections and group-chat shares) is the first source. The des
 
 > **Status:** Phase 1 (historical import) complete; Phase 2 (extraction pipeline) and an interim
 > dashboard in progress. *Lore* is a working name; the code and env vars currently use the earlier
-> name **InstaBrain** (`INSTABRAIN_*`).
+> name **Lore** (`LORE_*`).
 
 ## Docs
 
@@ -60,7 +60,7 @@ Choose **JSON** format (HTML is not supported) and include at least *Saved* and 
 ### Setup
 
 ```bash
-cp .env.example .env              # set INSTABRAIN_API_KEY
+cp .env.example .env              # set LORE_API_KEY
 cd backend
 uv venv -p 3.12 .venv             # or: python3.12 -m venv .venv
 uv pip install -p .venv -r requirements-dev.txt
@@ -70,8 +70,8 @@ docker compose up -d postgres redis
 ```
 
 If ports 5432/6379 are taken, run
-`INSTABRAIN_PG_HOST_PORT=5433 INSTABRAIN_REDIS_HOST_PORT=6380 docker compose up -d postgres redis`
-and set `INSTABRAIN_DATABASE_URL` to use port 5433.
+`LORE_PG_HOST_PORT=5433 LORE_REDIS_HOST_PORT=6380 docker compose up -d postgres redis`
+and set `LORE_DATABASE_URL` to use port 5433.
 
 ### Inspect an export (no database needed)
 
@@ -112,11 +112,11 @@ Local without Docker (Postgres + Redis still from Compose):
 ```bash
 cd backend
 .venv/bin/uvicorn app.main:app --reload
-.venv/bin/celery -A app.workers.celery_app worker -Q instabrain.imports --loglevel=INFO
+.venv/bin/celery -A app.workers.celery_app worker -Q lore.imports --loglevel=INFO
 .venv/bin/celery -A app.workers.celery_app beat --loglevel=INFO
 ```
 
-Set `INSTABRAIN_TASK_BACKEND=inline` to run imports inside the API process instead (no Redis/worker;
+Set `LORE_TASK_BACKEND=inline` to run imports inside the API process instead (no Redis/worker;
 for development only).
 
 CLI: `python -m scripts.import_instagram_export export.zip --enqueue` hands the import to the worker.
@@ -127,7 +127,7 @@ Without `--enqueue` it runs in the foreground.
 ```bash
 cd backend
 .venv/bin/pytest                          # SQLite only
-INSTABRAIN_TEST_DATABASE_URL=postgresql+psycopg://instabrain:instabrain@localhost:5432/instabrain_test \
+LORE_TEST_DATABASE_URL=postgresql+psycopg://lore:lore@localhost:5432/lore_test \
   .venv/bin/pytest                        # also runs DB tests on PostgreSQL
 .venv/bin/ruff check . ../scripts
 ```
@@ -155,7 +155,7 @@ scripts/             inspect_instagram_export.py, import_instagram_export.py
 
 Tested against a real JSON export from 2026-11. See `docs/KNOWN_LIMITATIONS.md`. To check your
 own export without committing it:
-`cd backend && INSTABRAIN_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py`
+`cd backend && LORE_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py`
 
 ### Caption extraction (Phase 2, trial)
 
@@ -163,7 +163,7 @@ own export without committing it:
 # preview exactly what would be sent (no model call)
 backend/.venv/bin/python -m scripts.extract_captions --limit 5 --dry-run
 # run with a GitHub account that has Copilot (token read from env only, never stored)
-INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
+LORE_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
   backend/.venv/bin/python -m scripts.extract_captions --limit 10 --model claude-haiku-5.5
 ```
 
@@ -176,7 +176,7 @@ Your Instagram export doesn't contain the images/videos of saved posts, so attac
 backend/.venv/bin/python -m scripts.add_media https://www.instagram.com/p/<SHORTCODE>/ \
     slide1.jpg slide2.jpg --process
 # …and re-run extraction with the new text
-INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
+LORE_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
   backend/.venv/bin/python -m scripts.add_media <SHORTCODE> reel.mp4 --process --extract
 ```
 
@@ -192,10 +192,10 @@ with automatic retries and crash recovery.
 
 ```bash
 # start a pipeline worker (host; token only in this process's environment)
-cd backend && INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
-  INSTABRAIN_DATABASE_URL=postgresql+psycopg://instabrain:instabrain@localhost:5433/instabrain \
-  INSTABRAIN_REDIS_URL=redis://localhost:6380/0 \
-  .venv/bin/celery -A app.workers.celery_app worker -Q instabrain.pipeline --concurrency=1
+cd backend && LORE_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
+  LORE_DATABASE_URL=postgresql+psycopg://lore:lore@localhost:5433/lore \
+  LORE_REDIS_URL=redis://localhost:6380/0 \
+  .venv/bin/celery -A app.workers.celery_app worker -Q lore.pipeline --concurrency=1
 
 # queue work (explicit limits = cost control)
 curl -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
@@ -204,12 +204,12 @@ curl -H "X-API-Key: $KEY" localhost:8000/api/v1/stats
 curl -H "X-API-Key: $KEY" "localhost:8000/api/v1/processing/jobs?status_filter=needs_manual_input"
 curl -X POST -H "X-API-Key: $KEY" localhost:8000/api/v1/content/<id>/reprocess
 ```
-Or in Docker: `INSTABRAIN_COPILOT_GITHUB_TOKEN=... docker compose --profile pipeline up -d`.
+Or in Docker: `LORE_COPILOT_GITHUB_TOKEN=... docker compose --profile pipeline up -d`.
 - Architecture diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ### Dashboard
 
-Open **http://localhost:8000/** and enter your API key (`INSTABRAIN_API_KEY` from `.env`).
+Open **http://localhost:8000/** and enter your API key (`LORE_API_KEY` from `.env`).
 
 - **Overview:** totals, categories, processing status, collections, where content came from
 - **Content:** search and filter everything. Click an item for its summary, extracted places,
