@@ -1,18 +1,63 @@
-# InstaBrain
+# Lore
 
-Personal content intelligence for Instagram. See [`PRD.md`](PRD.md) for the full specification.
+**Personal content intelligence system.** Save or share something interesting → Lore captures it → AI understands it → it becomes structured, searchable knowledge → ask for it whenever you need it.
 
-**Current status: Phase 1 (historical export inspection and import).** See
-[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md),
-[`docs/DECISIONS.md`](docs/DECISIONS.md) and
-[`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
+Instagram (saved collections and group-chat shares) is the first source. The design is source-agnostic, so YouTube, Pinterest and articles can come later.
 
-## Get your Instagram export
+> **Status:** Phase 1 (historical import) complete; Phase 2 (extraction pipeline) and an interim
+> dashboard in progress. *Lore* is a working name; the code and env vars currently use the earlier
+> name **InstaBrain** (`INSTABRAIN_*`).
+
+## Docs
+
+| File | What it is |
+|---|---|
+| [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) | Full PRD + system design, with Mermaid diagrams (architecture, ingestion, media acquisition, pipeline, state machine, sequence, data model, search, roadmap) |
+| [`docs/AGENT_KICKOFF.md`](docs/AGENT_KICKOFF.md) | First prompt for Claude Code / OpenCode, scoped to Phase 1 |
+| [`docs/diagrams.html`](docs/diagrams.html) | The same design as a standalone page with pre-rendered diagrams (open locally in a browser) |
+| [`PRD.md`](PRD.md) | Original PRD + technical architecture specification used for implementation |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diagrams of the **implemented** system (flow, job lifecycle, import sequence, privacy boundary) |
+| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Phase-by-phase progress |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture decision records |
+| [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) | Platform and provider limitations |
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+    IN["Ingestion<br/>export ZIP · capture API · uploads"] --> REG["Content registry<br/>dedup · sources"]
+    REG --> MA["Media acquisition<br/>+ manual fallback"]
+    MA --> P["Async workers<br/>transcribe · OCR · frames · caption"]
+    P --> AI["Intelligence<br/>classify · extract · summarise"]
+    AI --> PG[("PostgreSQL + pgvector<br/>source of truth")]
+    PG --> N["Notion"]
+    PG --> S["Search + Q&A"]
+```
+
+## Roadmap
+
+1. **Foundation + historical import** ✅ verified on a real 1.1 GB export
+2. Extraction pipeline (STT · OCR · LLM) 🟡 processing queue, OCR, Whisper and LLM extraction done; bulk run pending
+3. Notion sync ← *next*
+4. Continuous capture (web form → Telegram bot)
+5. Dashboard 🟡 interim dashboard at `/dashboard/`
+6. Semantic search + Q&A
+7. Itineraries, reading lists, digests, more platforms
+
+## Stack
+
+Python 3.12 · FastAPI · PostgreSQL + pgvector · Celery + Redis · FFmpeg · Whisper · PaddleOCR/Tesseract · LLM with structured output · Notion API · Docker Compose
+
+---
+
+# Running it
+
+### Get your Instagram export
 
 Instagram → Accounts Center → *Your information and permissions* → *Download your information*.
 Choose **JSON** format (HTML is not supported) and include at least *Saved* and *Messages*.
 
-## Setup
+### Setup
 
 ```bash
 cp .env.example .env              # set INSTABRAIN_API_KEY
@@ -28,7 +73,7 @@ If ports 5432/6379 are taken, run
 `INSTABRAIN_PG_HOST_PORT=5433 INSTABRAIN_REDIS_HOST_PORT=6380 docker compose up -d postgres redis`
 and set `INSTABRAIN_DATABASE_URL` to use port 5433.
 
-## Inspect an export (no database needed)
+### Inspect an export (no database needed)
 
 ```bash
 backend/.venv/bin/python -m scripts.inspect_instagram_export /path/to/instagram-export.zip
@@ -38,7 +83,7 @@ backend/.venv/bin/python -m scripts.inspect_instagram_export /path/to/export.zip
 Accepts a ZIP or an extracted folder. Exit code 0 means clean, 1 means parsing errors were reported,
 and 2 means the archive is invalid.
 
-## Import into PostgreSQL
+### Import into PostgreSQL
 
 ```bash
 backend/.venv/bin/python -m scripts.import_instagram_export /path/to/instagram-export.zip
@@ -47,7 +92,7 @@ backend/.venv/bin/python -m scripts.import_instagram_export --resume <batch-id> 
 
 Re-importing is safe: content and source associations are idempotent.
 
-## API + background worker
+### API + background worker
 
 ```bash
 docker compose up -d --build          # postgres, redis, migrate, api, worker, beat
@@ -77,7 +122,7 @@ for development only).
 CLI: `python -m scripts.import_instagram_export export.zip --enqueue` hands the import to the worker.
 Without `--enqueue` it runs in the foreground.
 
-## Tests
+### Tests
 
 ```bash
 cd backend
@@ -87,7 +132,7 @@ INSTABRAIN_TEST_DATABASE_URL=postgresql+psycopg://instabrain:instabrain@localhos
 .venv/bin/ruff check . ../scripts
 ```
 
-## Layout
+### Layout
 
 ```
 backend/app/
@@ -106,13 +151,13 @@ backend/tests/       unit/, integration/, fixtures/ (see fixtures/README.md)
 scripts/             inspect_instagram_export.py, import_instagram_export.py
 ```
 
-## Verified export format
+### Verified export format
 
 Tested against a real JSON export from 2026-11. See `docs/KNOWN_LIMITATIONS.md`. To check your
 own export without committing it:
 `cd backend && INSTABRAIN_REAL_EXPORT=/path/to/export.zip .venv/bin/pytest tests/integration/test_real_exports.py`
 
-## Caption extraction (Phase 2, trial)
+### Caption extraction (Phase 2, trial)
 
 ```bash
 # preview exactly what would be sent (no model call)
@@ -122,7 +167,7 @@ INSTABRAIN_COPILOT_GITHUB_TOKEN=$(gh auth token -h github.com -u <account>) \
   backend/.venv/bin/python -m scripts.extract_captions --limit 10 --model claude-haiku-5.5
 ```
 
-## Media: OCR + transcription
+### Media: OCR + transcription
 
 Your Instagram export doesn't contain the images/videos of saved posts, so attach them yourself:
 
@@ -139,7 +184,7 @@ Or via the API: `POST /api/v1/content/{id}/media` (multipart `files`) and
 `GET /api/v1/content/{id}/media`. Requires `ffmpeg` and `tesseract`
 (`brew install ffmpeg tesseract tesseract-lang`). The Docker image includes both.
 
-## Processing queue (one job per post)
+### Processing queue (one job per post)
 
 Each post/Reel has exactly one processing job that moves through
 `QUEUED → VALIDATING → EXTRACTING_MEDIA/TRANSCRIBING → STRUCTURING → COMPLETED | NEEDS_MANUAL_INPUT | FAILED`,
@@ -162,7 +207,7 @@ curl -X POST -H "X-API-Key: $KEY" localhost:8000/api/v1/content/<id>/reprocess
 Or in Docker: `INSTABRAIN_COPILOT_GITHUB_TOKEN=... docker compose --profile pipeline up -d`.
 - Architecture diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
-## Dashboard
+### Dashboard
 
 Open **http://localhost:8000/** and enter your API key (`INSTABRAIN_API_KEY` from `.env`).
 
