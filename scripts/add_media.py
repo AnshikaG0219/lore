@@ -2,8 +2,8 @@
 
 Usage:
     python -m scripts.add_media <instagram-url|shortcode|content-id> file1.jpg file2.mp4 ...
-    python -m scripts.add_media DZeWJjAGGW2 reel.mp4 --process            # run now, in-process
-    INSTABRAIN_COPILOT_GITHUB_TOKEN=... python -m scripts.add_media DZeWJjAGGW2 reel.mp4 \\
+    python -m scripts.add_media <SHORTCODE> reel.mp4 --process            # run now, in-process
+    INSTABRAIN_COPILOT_GITHUB_TOKEN=... python -m scripts.add_media <SHORTCODE> reel.mp4 \\
         --process --extract                                              # then re-extract
 
 Without --process the files are queued for the media worker.

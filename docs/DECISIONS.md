@@ -118,7 +118,7 @@ which embeds the Copilot agent runtime and bills the token owner's Copilot plan 
 session runs with **no tools** (`available_tools=[]`), skills, config discovery and custom
 instructions disabled, and a permission handler that rejects everything. It is a plain
 completion endpoint. JSON validity is enforced by our Pydantic schema plus one corrective retry.
-**Account:** the trial run used the user's Adobe-provided Copilot (`anshikag_adobe`), at the user's
+**Account:** the trial run used the user's Adobe-provided Copilot (work account), at the user's
 explicit request. Personal data is sent through an employer licence, so check this against company
 policy before bulk processing. A personal plan or another provider is a config change.
 **Privacy:** only caption, hashtags, creator, content type and the user's own collection names are
