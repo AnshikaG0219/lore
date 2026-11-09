@@ -2,6 +2,20 @@
 // Lore dashboard. All data is rendered with textContent via h() — never innerHTML —
 // because captions and titles are untrusted text.
 
+const UI_VERSION = "4"; // must match <meta name="lore-ui-version"> in index.html
+(function checkVersion() {
+  // A cached page combined with a newer script breaks rendering; reload once to resync.
+  const pageVersion = document.querySelector('meta[name="lore-ui-version"]')?.content;
+  if (pageVersion !== UI_VERSION) {
+    if (!sessionStorage.getItem("lore-ui-reloaded")) {
+      sessionStorage.setItem("lore-ui-reloaded", "1");
+      location.reload();
+    }
+    throw new Error(`Dashboard files out of sync (page ${pageVersion}, script ${UI_VERSION}). Hard-refresh the page.`);
+  }
+  sessionStorage.removeItem("lore-ui-reloaded");
+})();
+
 const API = "/api/v1";
 const PAGE = 25;
 const state = { offset: 0, total: 0, facets: null };

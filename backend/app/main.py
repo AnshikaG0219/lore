@@ -54,6 +54,9 @@ def _mount_dashboard(app: FastAPI) -> None:
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["Referrer-Policy"] = "no-referrer"
             response.headers["X-Frame-Options"] = "DENY"
+            # Always revalidate (ETag makes it cheap) so a page and script from different
+            # versions are never combined from the browser cache.
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
 

@@ -161,3 +161,15 @@ def test_dashboard_js_never_renders_bare_zero(client):
 
     js = client.get("/dashboard/app.js").text
     assert not re.search(r"\.length\s*&&", js)
+
+
+def test_dashboard_is_revalidated_and_versions_match(client):
+    import re
+
+    page = client.get("/dashboard/")
+    assert page.headers["cache-control"] == "no-cache"
+    assert client.get("/dashboard/app.js").headers["cache-control"] == "no-cache"
+    page_v = re.search(r'name="lore-ui-version" content="(\w+)"', page.text).group(1)
+    js_v = re.search(r'const UI_VERSION = "(\w+)"', client.get("/dashboard/app.js").text).group(1)
+    assert page_v == js_v
+    assert f"app.js?v={page_v}" in page.text and f"styles.css?v={page_v}" in page.text
