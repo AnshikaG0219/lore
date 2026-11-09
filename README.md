@@ -215,3 +215,20 @@ Open **http://localhost:8000/** and enter your API key (`LORE_API_KEY` from `.en
 - **Content:** search and filter everything. Click an item for its summary, extracted places,
   books and products (with *explicit/inferred* evidence), caption, sources and a **Reprocess** button.
 - **Places:** every extracted place across your saves, filterable (e.g. "ladakh", "café")
+
+### Fetching media automatically (opt-in)
+
+Public posts can be downloaded **logged out** with yt-dlp, which removes most manual uploads
+(ADR-023: it's against Instagram's terms, so it's off by default and never uses your account).
+Add `LORE_MEDIA_FETCH_ENABLED=true` to the pipeline worker's environment, then re-queue the items
+that need input, starting with your own saves:
+
+```bash
+curl -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"limit": 5000, "only_new": false, "status": "NEEDS_MANUAL_INPUT", "saved_only": true, "priority": 10}' \
+  localhost:8000/api/v1/processing/enqueue
+curl -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"limit": 5000, "only_new": false, "status": "NEEDS_MANUAL_INPUT"}' \
+  localhost:8000/api/v1/processing/enqueue
+```
+Fetching is paced (one request per 8s) and pauses for 30 minutes if Instagram pushes back.

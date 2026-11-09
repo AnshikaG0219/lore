@@ -36,7 +36,8 @@ class MediaEngines:
 
 
 def attach_media(session: Session, store: LocalMediaStore, content_id: uuid.UUID,
-                 stream: BinaryIO, filename: str | None) -> tuple[MediaAsset, bool]:
+                 stream: BinaryIO, filename: str | None,
+                 source: str = "manual_upload") -> tuple[MediaAsset, bool]:
     """Store a file for a content item. Returns (asset, created); duplicates are reused."""
     if session.get(ContentItem, content_id) is None:
         raise LookupError(f"Content item {content_id} not found")
@@ -48,6 +49,7 @@ def attach_media(session: Session, store: LocalMediaStore, content_id: uuid.UUID
     position = session.scalar(select(func.count()).where(MediaAsset.content_id == content_id))
     asset = MediaAsset(
         content_id=content_id, asset_type=stored.kind.asset_type, position=position or 0,
+        source=source,
         storage_path=str(stored.path), original_filename=(filename or "")[:255] or None,
         mime_type=stored.kind.mime_type, file_size=stored.size, checksum=stored.checksum,
         processing_status="pending", meta={},

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     pipeline_sweep_batch: int = Field(default=500, gt=0)
     auto_process_imports: bool = False  # cost control: queue new imports automatically?
 
+    # Public media fetching with yt-dlp, logged out (ADR-023). Off unless enabled.
+    media_fetch_enabled: bool = False
+    media_fetch_min_interval_seconds: float = Field(default=8.0, ge=1)
+    media_fetch_pause_seconds: int = Field(default=1800, gt=0)
+    media_fetch_video_format: str = "best[height<=720]/best"
+    media_fetch_max_bytes: int = Field(default=150 * 1024**2, gt=0)
+
     # GitHub token with Copilot access, used by the extraction task. Never logged.
     copilot_github_token: SecretStr | None = None
 
