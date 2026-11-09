@@ -27,8 +27,22 @@ SORTS = {
 }
 
 
+FOUND_KEYS = ("places", "books", "products", "films_and_shows", "tools")
+
+
+def _found(ex: dict[str, Any]) -> dict[str, int]:
+    info = ex.get("extracted_information") or {}
+    found = {k: len(info.get(k) or []) for k in FOUND_KEYS if info.get(k)}
+    if info.get("recipe"):
+        found["recipe"] = 1
+    if info.get("tips"):
+        found["tips"] = len(info["tips"])
+    return found
+
+
 def _summary(item: ContentItem, collections: list[str], source_count: int) -> dict[str, Any]:
     ex = (item.extracted_data or {}).get(EXTRACTION_KEY) or {}
+    fetch = (item.extracted_data or {}).get("media_fetch") or {}
     return {
         "id": str(item.id), "url": item.canonical_url, "shortcode": item.platform_content_id,
         "content_type": item.content_type, "creator": item.creator_username,
@@ -42,6 +56,7 @@ def _summary(item: ContentItem, collections: list[str], source_count: int) -> di
         "first_captured_at": item.first_captured_at.isoformat() if item.first_captured_at else None,
         "last_processed_at": item.last_processed_at.isoformat() if item.last_processed_at else None,
         "collections": collections, "source_count": source_count,
+        "found": _found(ex), "fetch_status": fetch.get("status"),
     }
 
 
@@ -141,12 +156,21 @@ def facets(session: Session = Depends(get_session)) -> dict[str, Any]:
         .where(ContentSource.source_type == "saved_collection")
         .group_by(ContentSource.source_name).order_by(ContentSource.source_name)).all()
     last_import = session.scalar(select(ImportBatch).order_by(ImportBatch.created_at.desc()))
+    # Why items need help: outcome of the media-fetch stage (ADR-023), per item.
+    fetch_col = ContentItem.extracted_data["media_fetch"]["status"].as_string()
+    needs_help = [{"value": v or "not_attempted", "count": c} for v, c in session.execute(
+        select(fetch_col, func.count()).where(ContentItem.processing_status == "NEEDS_MANUAL_INPUT")
+        .group_by(fetch_col)).all()]
+    jobs = dict(session.execute(select(ProcessingJob.status, func.count())
+                                .group_by(ProcessingJob.status)).all())
     return {
         "categories": grouped(ContentItem.primary_category),
         "statuses": grouped(ContentItem.processing_status),
         "content_types": grouped(ContentItem.content_type),
         "source_types": grouped(ContentSource.source_type),
         "collections": [{"value": n, "count": c} for n, c in collections if n],
+        "needs_help_reasons": sorted(needs_help, key=lambda r: -r["count"]),
+        "jobs": jobs,
         "last_import": None if last_import is None else {
             "filename": last_import.filename, "status": last_import.status,
             "completed_at": last_import.completed_at.isoformat()

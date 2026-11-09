@@ -96,6 +96,9 @@ transcription are essential, not optional.
 Interim static dashboard at `/dashboard/` (ADR-022): overview KPIs, category/status/source charts,
 collections, searchable/filterable content list, detail drawer with evidence badges and
 reprocess, places explorer. Verified in Chromium (Playwright), no console/CSP errors.
+First-view clarity (2026-11-09): plain-language summary and search, live progress with ETA,
+explained status cards, topic tiles, "why posts need your help", found-item chips per post,
+"How Lore works".
 Still to do for Phase 5: Next.js app, session auth, manual editing, bulk operations, settings.
 ## Phase 6 — Semantic Search & Assistant ⏳
 ## Phase 7 — Advanced Features ⏳

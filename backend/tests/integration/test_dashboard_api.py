@@ -146,3 +146,18 @@ def test_dashboard_served_with_security_headers(client):
     assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
     js = client.get("/dashboard/app.js").text
     assert "innerHTML" not in js.replace("never innerHTML", "")  # all rendering via textContent
+
+
+def test_found_counts_and_needs_help_reasons(client):
+    items = client.get("/api/v1/content?category=travel", headers=H).json()["items"]
+    assert items[0]["found"] == {"places": 1}
+    f = client.get("/api/v1/facets", headers=H).json()
+    assert "needs_help_reasons" in f and "jobs" in f
+
+
+def test_dashboard_js_never_renders_bare_zero(client):
+    """`list.length && x` renders "0" for empty lists; checks must use `> 0`."""
+    import re
+
+    js = client.get("/dashboard/app.js").text
+    assert not re.search(r"\.length\s*&&", js)

@@ -11,7 +11,7 @@
     <div class="brand">🧠 Lore</div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-view="overview" role="tab">Overview</button>
-      <button class="tab" data-view="content" role="tab">Content</button>
+      <button class="tab" data-view="content" role="tab">All posts</button>
       <button class="tab" data-view="places" role="tab">Places</button>
     </nav>
     <button id="logout" class="ghost" title="Forget API key">Sign out</button>
@@ -32,15 +32,72 @@
 
     <!-- Overview -->
     <section id="view-overview" class="view">
-      <div id="kpis" class="kpis"></div>
-      <div class="grid2">
-        <div class="card"><h3>Categories</h3><div id="chart-categories" class="bars"></div></div>
-        <div class="card"><h3>Processing status</h3><div id="chart-status" class="bars"></div></div>
-        <div class="card"><h3>Your collections</h3><div id="collections" class="chips"></div></div>
-        <div class="card"><h3>Where content came from</h3><div id="chart-sources" class="bars"></div>
-          <p id="last-import" class="muted small"></p></div>
+      <div class="hero card">
+        <div>
+          <h1>Everything you saved on Instagram, organised</h1>
+          <p id="hero-summary" class="lead">Loading…</p>
+        </div>
+        <form id="hero-search" class="hero-search" role="search">
+          <input name="q" type="search" placeholder="Search everything… e.g. cafés in Leh, books, tiramisu"
+                 aria-label="Search your saved posts">
+          <button type="submit">Search</button>
+        </form>
       </div>
-      <div class="card"><h3>Recently processed</h3><div id="recent"></div></div>
+
+      <div id="progress" class="card progress-card" hidden>
+        <div class="progress-head"><h3>⚙️ Lore is reading your posts right now</h3>
+          <span id="progress-eta" class="muted"></span></div>
+        <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+        <p id="progress-text" class="muted small"></p>
+      </div>
+
+      <div id="kpis" class="kpis"></div>
+
+      <div class="card">
+        <div class="card-head"><h3>Explore by topic</h3>
+          <span class="muted small">Click a topic to see every post in it</span></div>
+        <div id="topics" class="topics"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card help-card">
+          <h3>🙋 Why some posts need your help</h3>
+          <p class="muted small">Lore could only read the caption for these, and the caption didn't
+            say enough. It never guesses, so they wait for more information.</p>
+          <div id="help-reasons"></div>
+          <button id="help-open" class="ghost" type="button">See these posts →</button>
+        </div>
+        <div class="card">
+          <h3>📁 Your collections</h3>
+          <p class="muted small">Folders you created when saving on Instagram.</p>
+          <div id="collections" class="chips"></div>
+          <h3 class="spaced">📥 Where your posts came from</h3>
+          <div id="chart-sources" class="bars"></div>
+          <p id="last-import" class="muted small"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>✨ Recently understood</h3>
+          <span class="muted small">Click a post to see everything Lore extracted</span></div>
+        <div id="recent" class="list"></div>
+      </div>
+
+      <details class="card how">
+        <summary><b>How Lore works</b> <span class="muted small">(1 minute read)</span></summary>
+        <ol>
+          <li><b>Import.</b> Your Instagram data export is read: saved posts, collections and links
+            friends shared in chats. The same post saved or shared several times is kept once.</li>
+          <li><b>Fetch.</b> For public posts, the video or images are downloaded without using your
+            account (logged out).</li>
+          <li><b>Read.</b> Speech is transcribed and on-screen text is read, on this computer.</li>
+          <li><b>Understand.</b> An AI turns the caption, on-screen text and speech into a title,
+            summary, topic and lists of places, books, products and tips. Each item is marked
+            <span class="badge ev-explicit">✓ in the post</span> or
+            <span class="badge ev-inferred">~ AI guess</span>.</li>
+          <li><b>Search.</b> Everything is searchable here; the original post is always one click away.</li>
+        </ol>
+      </details>
     </section>
 
     <!-- Content -->
