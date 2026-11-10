@@ -254,3 +254,17 @@ class OcrText(UUIDPk, Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     engine: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ContentFacet(UUIDPk, Base):
+    """Normalised filter values per item (type, topic, city, zone, cuisine, trip_type…)."""
+
+    __tablename__ = "content_facets"
+    __table_args__ = (UniqueConstraint("content_id", "facet", "value"),
+                      Index("ix_content_facets_facet_value", "facet", "value"))
+
+    content_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_items.id", ondelete="CASCADE"), index=True
+    )
+    facet: Mapped[str] = mapped_column(String(64))
+    value: Mapped[str] = mapped_column(String(200))

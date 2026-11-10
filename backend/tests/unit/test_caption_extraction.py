@@ -16,11 +16,12 @@ from app.processing.extraction.caption import (
 )
 
 VALID = {
-    "title": "Six cafés in Leh", "summary": "Lists six cafés.", "primary_category": "travel",
-    "secondary_category": "food_and_recipes", "subcategory": "cafes", "key_takeaways": [],
-    "entities": [], "extracted_information": {"places": [
-        {"name": "Café A", "place_type": "cafe", "location": "Leh", "notes": None,
-         "evidence": "explicit"}]},
+    "title": "Six cafés in Leh", "summary": "Lists six cafés.", "post_type": "trip",
+    "topic": "travel", "subtopic": "cafes", "key_takeaways": [], "tips": [],
+    "trip": {"scope": "india", "destinations": [{"city": "Leh", "state": "Ladakh"}],
+             "trip_types": ["mountains"],
+             "places_to_visit": [{"name": "Café A", "kind": "cafe",
+                                  "location": {"city": "Leh"}, "evidence": "explicit"}]},
     "tags": ["Ladakh", "ladakh", "Cafes"], "language": "en", "information_sufficient": True,
     "confidence": 0.8,
 }
@@ -46,15 +47,15 @@ class FakeProvider:
 def test_parse_handles_fences_and_dedupes_tags():
     ex = parse_response("```json\n" + json.dumps(VALID) + "\n```")
     assert ex.tags == ["Ladakh", "Cafes"]
-    assert ex.extracted_information.places[0].evidence == "explicit"
+    assert ex.trip.places_to_visit[0].evidence == "explicit"
 
 
 @pytest.mark.parametrize("bad", [
     "no json here",
-    json.dumps({**VALID, "primary_category": "astrology"}),
+    json.dumps({**VALID, "post_type": None}),
     json.dumps({**VALID, "confidence": 3}),
-    json.dumps({**VALID, "invented_field": 1}),
-    json.dumps({**VALID, "extracted_information": {"places": [{"name": "X"}]}}),  # no evidence
+    json.dumps({**VALID, "information_sufficient": None}),
+    json.dumps({**VALID, "trip": {"places_to_visit": [{"kind": "lake"}]}}),  # place has no name
 ])
 def test_parse_rejects_invalid(bad):
     with pytest.raises(ValueError):
@@ -99,7 +100,8 @@ def test_success_persists_and_caches(session_factory, item):
     assert _run(session_factory, item, provider)["status"] == "completed"
     with session_factory() as s:
         it = s.get(ContentItem, item)
-        assert it.primary_category == "travel" and it.extraction_confidence == 0.8
+        assert it.primary_category == "trip" and it.secondary_category == "travel"
+        assert it.extraction_confidence == 0.8
         assert it.extracted_data[JOB_TYPE]["_meta"]["model"] == "fake-1"
         assert s.scalar(select(AuditLog.action)) == "caption_extraction.completed"
     # unchanged input → skipped without calling the provider

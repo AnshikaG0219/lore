@@ -89,7 +89,7 @@ def test_happy_path_completes_and_records_stages(session_factory, runner_for):
     cid = _item(session_factory)
     job = _enqueue(session_factory, cid).job_id
     out = runner_for(Providers(json.dumps(VALID))).run(job)
-    assert out["status"] == "completed" and out["category"] == "travel"
+    assert out["status"] == "completed" and out["category"] == "trip"
     j = _job(session_factory, job)
     assert (j.status, j.stage, j.runner_id) == ("completed", "COMPLETED", None)
     assert j.result["sources"] == ["caption"] and j.result["information_sufficient"] is True
@@ -236,7 +236,7 @@ def test_api_enqueue_reprocess_stats(session_factory, runner_for, tmp_path):
         assert c.post("/api/v1/processing/enqueue", headers=h,
                       json={"limit": 10}).json()["selected"] == 1  # only items without a job
         stats = c.get("/api/v1/stats", headers=h).json()
-        assert stats["jobs_by_status"] == {"completed": 3} and stats["categories"]["travel"] == 3
+        assert stats["jobs_by_status"] == {"completed": 3} and stats["categories"]["trip"] == 3
         cid = c.get("/api/v1/processing/jobs", headers=h).json()[0]["content_id"]
         rp = c.post(f"/api/v1/content/{cid}/reprocess", headers=h).json()
         assert rp["job"]["status"] == "completed" and rp["already_active"] is False

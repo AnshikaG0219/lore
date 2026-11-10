@@ -22,53 +22,100 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AuditLog, ContentItem, ContentSource
 from app.processing.ai.provider import Completion, LLMProvider, ProviderError
-from app.processing.extraction.schema import PROMPT_VERSION, CaptionExtraction, Category
+from app.processing.classification.schema import (
+    CUISINES,
+    GOOD_FOR,
+    HOWTO_DOMAINS,
+    HUMOUR,
+    PRICE_LEVELS,
+    PROMPT_VERSION,
+    REC_KINDS,
+    STAYS,
+    TERRAIN,
+    THEMES,
+    TOPICS,
+    TRIP_TYPES,
+    VENUE_TYPES,
+    VIBES,
+    Classification,
+)
 
 log = logging.getLogger(__name__)
 
 JOB_TYPE = "caption_extraction"
 MAX_CAPTION_CHARS = 6000
 
-SYSTEM_PROMPT = f"""You are the extraction engine of a personal knowledge base built from saved \
-Instagram posts. You receive ONE post's caption and metadata and return ONE JSON object.
+SYSTEM_PROMPT = f"""You classify ONE Instagram post for a personal knowledge base and \
+return ONE JSON object.
 
 Hard rules:
-- Use ONLY the information provided. Never invent names, prices, addresses, locations, authors or
-  recommendations. If something is not stated, use null or an empty list.
-- Mark every entity/place/book/product with "evidence": "explicit" if it is written in the input,
-  or "inferred" if you derived it (e.g. a city implied by hashtags). Prefer explicit.
-- Sources are labelled: "caption" (written by the creator), "on_screen_text" (OCR of images or
-  video frames; may contain OCR noise or misspellings, so ignore garbled fragments and never
-  "correct" a name into a different one), and "spoken_transcript" (speech-to-text, which may
-  contain mis-heard words). Prefer facts confirmed by several sources. If they conflict, prefer
-  the on-screen text for names and spellings and mention the conflict in the summary.
-- The caption may not describe the video. If the caption alone does not reveal the actual content
-  (e.g. "wait for it", only hashtags, emojis), set "information_sufficient": false, keep the
-  summary honest about that, and lower "confidence".
-- "tips" and "key_takeaways" must come from the post itself. Do NOT add your own general advice
-  (e.g. "check opening hours", "watch the video"); if the post gives no tips, return [].
-- Do not list places/products that only appear in an advertiser's package list or call-to-action
-  unless the post actually recommends them.
-- Extract reusable knowledge, not just a summary: a post listing six cafés yields six places; a
-  book list yields each book.
-- "confidence" is your 0-1 confidence in the classification and extraction. Avoid false precision
-  (use one decimal).
-- Write title/summary/takeaways in English, even if the caption is in another language; keep
-  proper nouns as written. Set "language" to the caption's main language (ISO 639-1).
-- Respond with the JSON object only. No markdown, no commentary.
+- Use ONLY the information provided. Never invent names, prices, addresses, locations, authors,
+  dates or recommendations. Unknown → null or []. Prefer leaving a field empty to guessing.
+- Every venue/place/book/product has "evidence": "explicit" (written or said in the post) or
+  "inferred" (derived, e.g. a city from hashtags).
+- Inputs are labelled: "caption" (by the creator), "on_screen_text" (OCR; may be noisy; never
+  "correct" a name into a different one) and "spoken_transcript" (speech-to-text; may mis-hear).
+  Prefer the on-screen text for names and spellings.
+- If the post's actual content can't be determined, set "information_sufficient": false, say so
+  honestly in the summary and lower "confidence" (one decimal).
+- "tips"/"key_takeaways" only from the post itself; never add your own advice.
+- Ignore places/products that only appear in an advertiser's package list or call to action.
+- Locations: copy what the post says into place/area/city/state/country. Use the locality as
+  written (e.g. "Hauz Khas", "Sector 18", "Indirapuram"); do NOT convert it to a zone like
+  "South Delhi" yourself. Fill city/state only if stated or unambiguous from a well-known place.
+- English for title/summary/takeaways; keep proper nouns as written; "language" = ISO 639-1.
+- JSON only. No markdown.
 
-Allowed categories: {", ".join(c.value for c in Category)}.
+Choose ONE "post_type" (what the post is FOR):
+- eat_drink: café, restaurant, bar, street food, bakery… to visit
+- trip: destination, trek, itinerary, stay, travel tips
+- property: flat/house/plot for sale or rent
+- job: job opening, internship, hiring post
+- recommendations: a list of books/films/series/music/podcasts/products/apps/courses
+- how_to: tutorial, workout, recipe, money/tech/beauty/fashion/study tips
+- shopping: products, brands, gifts, deals (not a venue)
+- event: a dated event, workshop, concert, festival activity
+- thought: quote, reflection, opinion, news, social or political commentary
+- fun: meme, comedy skit, relatable/funny post, cute pets
+- other: none of the above
+A café inside a travel destination: "trip" if it's part of a trip guide, else "eat_drink".
+
+"topic" (one of): {", ".join(TOPICS)}. "subtopic": short free text (e.g. "rooftop cafés").
+
+Fill ONLY the section matching post_type (others null). For "fun" fill only fun.humour_type and
+keep summary to one sentence (no takeaways/tips).
 
 JSON shape:
-{{"title": str, "summary": str, "primary_category": category, "secondary_category": category|null,
- "subcategory": str|null, "key_takeaways": [str], "entities": [{{"name", "entity_type", "location",
- "description", "evidence"}}], "extracted_information": {{"places": [{{"name", "place_type",
- "location", "notes", "evidence"}}],
- "books": [{{"title", "author", "genre", "reason", "evidence"}}],
- "films_and_shows": [entity], "products": [{{"name", "brand", "price", "evidence"}}],
- "tools": [entity], "recipe": {{"name", "ingredients": [str], "steps": [str]}}|null,
- "tips": [str]}}, "tags": [str], "language": str|null, "information_sufficient": bool,
- "confidence": float}}"""
+{{"title": str, "summary": str, "post_type": str, "topic": str, "subtopic": str|null,
+ "key_takeaways": [str], "tips": [str], "tags": [str], "language": str|null,
+ "information_sufficient": bool, "confidence": float,
+ "eat_drink": {{"venues": [{{"name": str, "venue_type": {"|".join(VENUE_TYPES)},
+   "cuisines": [{"|".join(CUISINES)}], "dishes": [str],
+   "location": LOC, "good_for": [{"|".join(GOOD_FOR)}], "vibe": [{"|".join(VIBES)}],
+   "price_level": {"|".join(PRICE_LEVELS)}|null, "price_note": str|null, "notes": str|null,
+   "evidence": "explicit|inferred"}}]}} | null,
+ "trip": {{"scope": "india|international", "destinations": [LOC],
+   "trip_types": [{"|".join(TRIP_TYPES)}], "terrain": [{"|".join(TERRAIN)}],
+   "trek": {{"name", "difficulty": "easy|moderate|hard", "days": int, "max_altitude_m": int,
+   "base": str}} | null, "places_to_visit": [{{"name", "kind", "location": LOC, "notes",
+   "evidence"}}], "duration", "budget", "best_season", "how_to_reach",
+   "stays": [{"|".join(STAYS)}], "permits"}} | null,
+ "property": {{"deal": "buy|rent", "bhk": int, "size_sqft": int, "price": str, "project": str,
+   "location": LOC}} | null,
+ "job": {{"role", "company", "mode": "remote|onsite|hybrid", "location": LOC, "experience",
+   "deadline", "how_to_apply"}} | null,
+ "recommendations": {{"kind": {"|".join(REC_KINDS)}, "items": [{{"title", "creator", "genre",
+   "why", "evidence"}}]}} | null,
+ "how_to": {{"domain": {"|".join(HOWTO_DOMAINS)}, "steps": [str], "tools": [str],
+   "workout": {{"body_parts": [str], "equipment": [str]}}|null,
+   "recipe": {{"name", "cuisine", "diet": "veg|non_veg|vegan|eggetarian", "time",
+   "ingredients": [str]}}|null}} | null,
+ "shopping": {{"products": [{{"name", "brand", "price", "where_to_buy", "evidence"}}]}} | null,
+ "event": {{"what", "date", "price", "location": LOC}} | null,
+ "thought": {{"theme": {"|".join(THEMES)}}} | null,
+ "fun": {{"humour_type": {"|".join(HUMOUR)}}} | null}}
+where LOC = {{"place": str|null, "area": str|null, "city": str|null, "state": str|null,
+ "country": str|null}}"""
 
 
 @dataclass(slots=True)
@@ -146,7 +193,7 @@ def build_input(session: Session, item: ContentItem) -> ExtractionInput | None:
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
-def parse_response(text: str) -> CaptionExtraction:
+def parse_response(text: str) -> Classification:
     """Parse model output into the schema. Raises ValueError with a useful message."""
     cleaned = _FENCE.sub("", text.strip())
     start, end = cleaned.find("{"), cleaned.rfind("}")
@@ -157,14 +204,14 @@ def parse_response(text: str) -> CaptionExtraction:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON: {exc}") from exc
     try:
-        return CaptionExtraction.model_validate(data)
+        return Classification.model_validate(data)
     except ValidationError as exc:
         raise ValueError(f"Schema validation failed: {exc}") from exc
 
 
 @dataclass(slots=True)
 class ExtractionResult:
-    extraction: CaptionExtraction
+    extraction: Classification
     completion: Completion
     attempts: int
 
@@ -197,8 +244,8 @@ def persist_success(session: Session, item: ContentItem, inp: ExtractionInput,
     now = datetime.now(UTC)
     item.title = ex.title
     item.summary = ex.summary
-    item.primary_category = ex.primary_category.value
-    item.secondary_category = ex.secondary_category.value if ex.secondary_category else None
+    item.primary_category = ex.post_type
+    item.secondary_category = ex.topic
     item.tags = ex.tags
     item.extraction_confidence = ex.confidence
     item.last_processed_at = now
@@ -217,6 +264,9 @@ def persist_success(session: Session, item: ContentItem, inp: ExtractionInput,
             },
         },
     }
+    from app.processing.classification.facets import replace_facets
+
+    replace_facets(session, item.id, ex.model_dump(mode="json"))
     session.add(AuditLog(entity_type="content_item", entity_id=item.id,
                          action=f"{JOB_TYPE}.completed",
                          details={"attempts": result.attempts, "model": result.completion.model,
@@ -248,4 +298,4 @@ async def process_item(session: Session, item: ContentItem, provider: LLMProvide
     persist_success(session, item, inp, result, started)
     session.commit()
     return {"content_id": str(item.id), "status": "completed",
-            "attempts": result.attempts, "category": result.extraction.primary_category.value}
+            "attempts": result.attempts, "category": result.extraction.post_type}

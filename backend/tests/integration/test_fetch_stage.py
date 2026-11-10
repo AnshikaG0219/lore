@@ -62,10 +62,10 @@ def _item(factory, caption="Look 😍", with_media=False, tmp_path=None):
 def make_runner(session_factory, tmp_path):
     runners = []
 
-    def make(fetcher, governor=None, responses=3):
+    def make(fetcher, governor=None, responses=3, payload=VALID):
         r = PipelineRunner(session_factory, lambda: MediaEngines(FakeOcr(), FakeTranscriber()),
                            LocalMediaStore(tmp_path / "media", 10**7),
-                           lambda: FakeProvider(*[json.dumps(VALID)] * responses),
+                           lambda: FakeProvider(*[json.dumps(payload)] * responses),
                            fetcher=fetcher, governor=governor or LocalFetchGovernor())
         runners.append(r)
         return r
@@ -138,6 +138,9 @@ def test_final_outcomes_are_not_retried(session_factory, make_runner, reason):
     assert len(fetcher.calls) == 1
 
 
+THIN = {**VALID, "information_sufficient": False, "confidence": 0.3}
+
+
 def test_errors_retry_up_to_cap(session_factory, make_runner):
     fetcher = FakeFetcher(FetchError("error", "parser broke"))
     cid, job = _item(session_factory)
@@ -145,7 +148,7 @@ def test_errors_retry_up_to_cap(session_factory, make_runner):
         with session_factory() as s:
             q.enqueue(s, cid, reason="manual", force=True)
             s.commit()
-        make_runner(fetcher).run(job)
+        make_runner(fetcher, payload=THIN).run(job)
     assert len(fetcher.calls) == 3  # max_fetch_errors
     assert _state(session_factory, cid)[0].extracted_data["media_fetch"]["attempts"] == 3
 
@@ -168,3 +171,15 @@ def test_fetching_is_opt_in():
     from app.processing.factory import build_fetcher
 
     assert build_fetcher(Settings()) == (None, None)
+
+
+def test_well_understood_posts_are_never_fetched(session_factory, make_runner):
+    """Reclassification must not download media for posts the caption already explains."""
+    cid, job = _item(session_factory, caption="Six cafés in Leh: A, B, C…")
+    with session_factory() as s:
+        it = s.get(ContentItem, cid)
+        it.extracted_data = {"caption_extraction": {"information_sufficient": True}}
+        s.commit()
+    fetcher = FakeFetcher()
+    make_runner(fetcher).run(job)
+    assert fetcher.calls == []
