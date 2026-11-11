@@ -51,6 +51,14 @@ def build_facets(c: dict[str, Any], *, origin: str | None = None) -> list[tuple[
         add("price_level", v.get("price_level"))
         _add_place(rows, "venue.", *_loc_fields(v.get("location"), v.get("name")))
 
+    for pv in (c.get("place") or {}).get("places") or []:
+        add("place_kind", pv.get("kind"))
+        for x in pv.get("good_for") or []:
+            add("good_for", x)
+        for x in pv.get("vibe") or []:
+            add("vibe", x)
+        _add_place(rows, "place.", *_loc_fields(pv.get("location"), pv.get("name")))
+
     tr = c.get("trip") or {}
     if tr:
         add("trip_scope", tr.get("scope"))
@@ -89,8 +97,7 @@ def build_facets(c: dict[str, Any], *, origin: str | None = None) -> list[tuple[
     if rec:
         add("rec_kind", rec.get("kind"))
         for item in rec.get("items") or []:
-            if item.get("genre"):
-                add("genre", str(item["genre"]).strip().lower()[:60])
+            add("genre", item.get("genre"))
 
     ht = c.get("how_to") or {}
     if ht:

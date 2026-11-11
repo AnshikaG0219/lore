@@ -1,6 +1,6 @@
-"""Recompute content_facets from stored v4 classifications. No AI calls.
+"""Recompute content_facets and auto-hide state from stored classifications. No AI calls.
 
-Run after extending the gazetteer (new neighbourhoods, destinations…):
+Run after extending the gazetteer (new neighbourhoods, destinations…) or the hide rules:
     python -m scripts.rebuild_facets
 """
 
@@ -15,6 +15,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app.db.models import ContentItem  # noqa: E402
 from app.db.session import get_sessionmaker  # noqa: E402
+from app.processing.classification.archive import apply_visibility  # noqa: E402
 from app.processing.classification.facets import replace_facets  # noqa: E402
 from app.processing.classification.schema import PROMPT_VERSION  # noqa: E402
 
@@ -28,9 +29,10 @@ def main() -> int:
             if (c.get("_meta") or {}).get("prompt_version") != PROMPT_VERSION:
                 continue
             rows += replace_facets(session, item.id, c)
+            apply_visibility(item, c)
             done += 1
         session.commit()
-    print(f"rebuilt facets for {done} items ({rows} rows)")
+    print(f"rebuilt facets and visibility for {done} items ({rows} facet rows)")
     return 0
 
 

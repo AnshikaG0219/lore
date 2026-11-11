@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="lore-ui-version" content="4">
+  <meta name="lore-ui-version" content="5">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lore</title>
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">🧠 Lore</div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-view="overview" role="tab">Overview</button>
+      <button class="tab" data-view="eat" role="tab">🍽️ Eat &amp; drink</button>
+      <button class="tab" data-view="spots" role="tab">🏙️ Places</button>
+      <button class="tab" data-view="trips" role="tab">🗺️ Trips</button>
       <button class="tab" data-view="content" role="tab">All posts</button>
-      <button class="tab" data-view="places" role="tab">Places</button>
     </nav>
     <button id="logout" class="ghost" title="Forget API key">Sign out</button>
   </header>
@@ -101,11 +103,29 @@
       </details>
     </section>
 
+    <!-- Explore (drill-down) -->
+    <section id="view-explore" class="view" hidden>
+      <div class="card">
+        <h2 id="explore-title"></h2>
+        <p id="explore-help" class="muted small"></p>
+        <div id="explore-crumbs" class="chips crumbs"></div>
+      </div>
+      <div class="explore">
+        <aside id="explore-facets" class="card facets"></aside>
+        <div>
+          <div class="list-head"><span id="explore-count" class="muted"></span>
+            <span class="pager"><button id="explore-prev" class="ghost">‹ Prev</button>
+            <span id="explore-page"></span><button id="explore-next" class="ghost">Next ›</button></span></div>
+          <div id="explore-list" class="list"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- Content -->
     <section id="view-content" class="view" hidden>
       <form id="filters" class="filters card">
         <input name="q" type="search" placeholder="Search title, summary, caption, creator…">
-        <select name="category"><option value="">All categories</option></select>
+        <select name="category"><option value="">All types</option></select>
         <select name="status"><option value="">All statuses</option></select>
         <select name="collection"><option value="">All collections</option></select>
         <select name="content_type"><option value="">Posts & reels</option></select>
@@ -113,6 +133,11 @@
           <option value="">Processed or not</option>
           <option value="true">Processed only</option>
           <option value="false">Not processed</option>
+        </select>
+        <select name="visibility">
+          <option value="visible">Useful posts</option>
+          <option value="hidden">Hidden posts</option>
+          <option value="all">Everything</option>
         </select>
         <select name="sort">
           <option value="recent">Newest saves</option>
@@ -146,6 +171,6 @@
   <div id="scrim" class="scrim" hidden></div>
   <div id="toast" class="toast" hidden></div>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

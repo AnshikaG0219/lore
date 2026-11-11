@@ -19,6 +19,10 @@ _DELHI = {
         "mehrauli", "qutub", "safdarjung", "humayunpur", "malviya nagar", "shahpur jat",
         "chhatarpur", "kalkaji", "nehru place", "south extension", "south ex", "kotla",
         "amar colony", "panchsheel", "chittaranjan park", "cr park", "munirka", "ina",
+        "rk puram", "r.k. puram", "sangam vihar", "khanpur", "tughlakabad", "badarpur",
+        "govindpuri", "sukhdev vihar", "new friends colony", "nfc", "maharani bagh",
+        "hauz rani", "said ul ajaib", "saidulajab", "westend", "vasant enclave",
+        "neb sarai", "pushp vihar", "sarvapriya vihar", "gulmohar park", "anand lok",
         "dilli haat", "sainik farm", "sarojini nagar", "lado sarai", "mahipalpur", "aerocity",
         "okhla", "jasola", "sarita vihar", "jangpura", "nizamuddin", "east of kailash",
         "moolchand", "andrews ganj", "masjid moth", "anupam", "sheikh sarai", "dhaula kuan",
@@ -28,16 +32,23 @@ _DELHI = {
         "hudson lane", "gtb nagar", "mukherjee nagar", "model town", "vijay nagar",
         "shakti nagar", "timarpur", "pitampura", "rohini", "ashok vihar", "shalimar bagh",
         "netaji subhash place", "nsp", "kingsway camp", "burari", "azadpur",
+        "prashant vihar", "rohini sector", "ashok vihar", "wazirpur", "jahangirpuri",
+        "adarsh nagar", "narela", "bawana", "sant nagar", "outram lines",
+        "delhi university", "du north campus", "hindu college", "khalsa college",
     ],
     "West Delhi": [
         "rajouri garden", "janakpuri", "tilak nagar", "punjabi bagh", "dwarka", "subhash nagar",
         "vikaspuri", "uttam nagar", "patel nagar", "karol bagh", "kirti nagar", "moti nagar",
         "paschim vihar", "tagore garden", "ramesh nagar", "naraina", "rajinder nagar",
+        "hari nagar", "meera bagh", "vikas puri", "palam", "najafgarh", "mundka",
+        "nangloi", "peeragarhi", "shastri nagar", "inderlok", "west patel nagar",
     ],
     "East Delhi": [
         "laxmi nagar", "preet vihar", "mayur vihar", "shahdara", "patparganj", "nirman vihar",
         "anand vihar", "krishna nagar", "geeta colony", "akshardham", "ip extension",
-        "vivek vihar", "karkardooma",
+        "vivek vihar", "karkardooma", "pandav nagar", "shakarpur", "ganesh nagar",
+        "vinod nagar", "mandawali", "dilshad garden", "yamuna vihar", "gandhi nagar",
+        "jheel", "seelampur", "khichripur", "kalyanpuri",
     ],
     "Central / New Delhi": [
         "connaught place", "cp", "janpath", "khan market", "lodhi colony", "lodhi garden",
@@ -54,15 +65,17 @@ _DELHI = {
 
 # NCR cities: aliases for the city itself and localities inside it.
 _NCR = {
-    "Noida": ["noida", "greater noida", "noida extension", "greater noida west", "gaur city",
-              "pari chowk", "botanical garden noida", "dlf mall of india", "gip mall",
-              "film city noida"],
+    "Noida": ["noida", "botanical garden noida", "dlf mall of india", "gip mall",
+              "film city noida", "atta market", "brahmaputra market"],
     "Gurugram": ["gurugram", "gurgaon", "cyber hub", "cyberhub", "golf course road",
                  "sohna road", "mg road gurgaon", "sector 29 gurgaon", "udyog vihar",
                  "dlf phase", "galleria market", "ambience mall gurgaon"],
     "Ghaziabad": ["ghaziabad", "indirapuram", "vaishali", "kaushambi", "raj nagar",
                   "raj nagar extension", "crossings republik", "vasundhara", "shipra"],
     "Faridabad": ["faridabad", "surajkund", "ballabgarh"],
+    "Sonipat": ["sonipat", "sonepat", "kundli", "murthal"],
+    "Greater Noida": ["greater noida", "knowledge park", "alpha 1", "pari chowk",
+                      "greater noida west", "noida extension", "gaur city"],
 }
 
 # Destinations → Indian state / UT.
@@ -141,7 +154,7 @@ _DELHI_IDX.sort(key=lambda t: -len(t[2]))
 _NCR_IDX = _index(_NCR)
 _STATE_IDX = _index(_STATES)
 _COUNTRY_IDX = _index(_COUNTRIES)
-_SECTOR = re.compile(r"\bsector[\s-]*(\d{1,3}[a-z]?)\b")
+_SECTOR = re.compile(r"\b(?:sector|sec\.?)[\s-]*(\d{1,3}[a-z]?)\b")
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,7 +194,7 @@ def resolve(*parts: str | None) -> Place:
                 if key == city and m and m.group().lower() not in (city.lower(), "gurgaon"):
                     area = m.group().title()
                     break
-        state = "Uttar Pradesh" if city in ("Noida", "Ghaziabad") else "Haryana"
+        state = "Uttar Pradesh" if city in ("Noida", "Greater Noida", "Ghaziabad") else "Haryana"
         return Place("India", state, city, None, area)
 
     state = _first(_STATE_IDX, text)

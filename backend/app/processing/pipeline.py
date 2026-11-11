@@ -228,6 +228,9 @@ class PipelineRunner:
             inp = build_input(session, item)
             base = {"media": media}
             if inp is None:
+                from app.processing.classification.archive import apply_visibility
+
+                apply_visibility(item, {"information_sufficient": False})
                 q.finish(session, job_id, token, q.JobStatus.NEEDS_MANUAL_INPUT,
                          content_status=PS.NEEDS_MANUAL_INPUT,
                          result={**base, "reason": "no caption or media text"})

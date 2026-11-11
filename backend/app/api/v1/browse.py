@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_session
 from app.api.v1.content import _asset_out, _job_out
 from app.core.security import require_api_key
-from app.db.models import ContentItem, ContentSource, ImportBatch, MediaAsset, ProcessingJob
+from app.db.models import (
+    ContentFacet,
+    ContentItem,
+    ContentSource,
+    ImportBatch,
+    MediaAsset,
+    ProcessingJob,
+)
 from app.processing.extraction.caption import JOB_TYPE as EXTRACTION_KEY
 from app.processing.media.pipeline import media_text_for
 from app.processing.queue import PIPELINE_JOB
@@ -25,18 +32,39 @@ SORTS = {
     "confidence": (ContentItem.extraction_confidence.desc().nulls_last(), ContentItem.id),
     "title": (ContentItem.title.asc().nulls_last(), ContentItem.id),
 }
-
-
-FOUND_KEYS = ("places", "books", "products", "films_and_shows", "tools")
+VISIBILITY = {"visible": ContentItem.archived_at.is_(None),
+              "hidden": ContentItem.archived_at.is_not(None)}
 
 
 def _found(ex: dict[str, Any]) -> dict[str, int]:
-    info = ex.get("extracted_information") or {}
-    found = {k: len(info.get(k) or []) for k in FOUND_KEYS if info.get(k)}
-    if info.get("recipe"):
-        found["recipe"] = 1
-    if info.get("tips"):
-        found["tips"] = len(info["tips"])
+    """Counts of concrete things extracted, for 'what's inside' chips (v5 + legacy shape)."""
+    found: dict[str, int] = {}
+
+    def put(key: str, n: int) -> None:
+        if n:
+            found[key] = found.get(key, 0) + n
+
+    put("venues", len((ex.get("eat_drink") or {}).get("venues") or []))
+    put("places", len((ex.get("place") or {}).get("places") or []))
+    trip = ex.get("trip") or {}
+    put("places", len(trip.get("places_to_visit") or []))
+    if trip.get("trek"):
+        put("trek", 1)
+    if ex.get("property"):
+        put("listing", 1)
+    if (ex.get("job") or {}).get("role"):
+        put("job", 1)
+    rec = ex.get("recommendations") or {}
+    put(rec.get("kind") or "items", len(rec.get("items") or []))
+    put("products", len((ex.get("shopping") or {}).get("products") or []))
+    how = ex.get("how_to") or {}
+    if how.get("recipe"):
+        put("recipe", 1)
+    put("steps", len(how.get("steps") or []))
+    put("tips", len(ex.get("tips") or []))
+    info = ex.get("extracted_information") or {}  # legacy (pre-v4) shape
+    for k in ("places", "books", "products"):
+        put(k, len(info.get(k) or []))
     return found
 
 
@@ -57,6 +85,9 @@ def _summary(item: ContentItem, collections: list[str], source_count: int) -> di
         "last_processed_at": item.last_processed_at.isoformat() if item.last_processed_at else None,
         "collections": collections, "source_count": source_count,
         "found": _found(ex), "fetch_status": fetch.get("status"),
+        "gist": ex.get("gist"), "post_type": ex.get("post_type"), "topic": ex.get("topic"),
+        "hidden": item.archived_at is not None, "hidden_reason": item.archive_reason,
+        "visibility_override": item.visibility_override,
     }
 
 
@@ -70,10 +101,19 @@ def list_content(
     content_type: str | None = None,
     processed: bool | None = None,
     sort: str = "recent",
+    visibility: str = Query("visible", pattern="^(visible|hidden|all)$"),
+    facet: list[str] = Query(default=[], description="facet=value, e.g. zone=South Delhi"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
     stmt = select(ContentItem)
+    if visibility in VISIBILITY:
+        stmt = stmt.where(VISIBILITY[visibility])
+    for f in facet:
+        name, _, value = f.partition("=")
+        if name and value:
+            stmt = stmt.where(ContentItem.id.in_(select(ContentFacet.content_id).where(
+                ContentFacet.facet == name, ContentFacet.value == value)))
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(ContentItem.title.ilike(like), ContentItem.summary.ilike(like),
@@ -145,7 +185,8 @@ def get_content(content_id: uuid.UUID,
 @router.get("/facets")
 def facets(session: Session = Depends(get_session)) -> dict[str, Any]:
     def grouped(col, *where):
-        stmt = select(col, func.count()).group_by(col).order_by(func.count().desc())
+        stmt = select(col, func.count()).where(ContentItem.archived_at.is_(None)) \
+            .group_by(col).order_by(func.count().desc())
         for w in where:
             stmt = stmt.where(w)
         return [{"value": v, "count": c} for v, c in session.execute(stmt).all()
@@ -153,7 +194,9 @@ def facets(session: Session = Depends(get_session)) -> dict[str, Any]:
 
     collections = session.execute(
         select(ContentSource.source_name, func.count(func.distinct(ContentSource.content_id)))
-        .where(ContentSource.source_type == "saved_collection")
+        .join(ContentItem, ContentItem.id == ContentSource.content_id)
+        .where(ContentSource.source_type == "saved_collection",
+               ContentItem.archived_at.is_(None))
         .group_by(ContentSource.source_name).order_by(ContentSource.source_name)).all()
     last_import = session.scalar(select(ImportBatch).order_by(ImportBatch.created_at.desc()))
     # Why items need help: outcome of the media-fetch stage (ADR-023), per item.
@@ -167,9 +210,17 @@ def facets(session: Session = Depends(get_session)) -> dict[str, Any]:
         "categories": grouped(ContentItem.primary_category),
         "statuses": grouped(ContentItem.processing_status),
         "content_types": grouped(ContentItem.content_type),
-        "source_types": grouped(ContentSource.source_type),
+        "source_types": [{"value": v, "count": c} for v, c in session.execute(
+            select(ContentSource.source_type, func.count())
+            .join(ContentItem, ContentItem.id == ContentSource.content_id)
+            .where(ContentItem.archived_at.is_(None))
+            .group_by(ContentSource.source_type).order_by(func.count().desc())).all()],
         "collections": [{"value": n, "count": c} for n, c in collections if n],
         "needs_help_reasons": sorted(needs_help, key=lambda r: -r["count"]),
+        "hidden": [{"value": r, "count": c} for r, c in session.execute(
+            select(ContentItem.archive_reason, func.count())
+            .where(ContentItem.archived_at.is_not(None))
+            .group_by(ContentItem.archive_reason)).all()],
         "jobs": jobs,
         "last_import": None if last_import is None else {
             "filename": last_import.filename, "status": last_import.status,
@@ -186,7 +237,8 @@ def places(session: Session = Depends(get_session), q: str | None = Query(None, 
     """Every extracted place across processed items (e.g. "cafés in Ladakh")."""
     rows = session.execute(select(ContentItem.id, ContentItem.title, ContentItem.canonical_url,
                                   ContentItem.extracted_data)
-                           .where(ContentItem.last_processed_at.is_not(None))).all()
+                           .where(ContentItem.last_processed_at.is_not(None),
+                                  ContentItem.archived_at.is_(None))).all()
     needle = (q or "").strip().lower()
     out = []
     for cid, title, url, data in rows:
@@ -202,4 +254,27 @@ def places(session: Session = Depends(get_session), q: str | None = Query(None, 
                         "content_title": title, "url": url})
             if len(out) >= limit:
                 return out
+    return out
+
+
+@router.get("/facet-values")
+def facet_values(session: Session = Depends(get_session),
+                 facet: list[str] = Query(default=[]),
+                 name: list[str] = Query(default=[])) -> dict[str, list[dict[str, Any]]]:
+    """Counts of each facet in ``name`` among visible items matching the ``facet`` filters.
+    Powers drill-down menus (e.g. name=zone&facet=type=eat_drink)."""
+    base = select(ContentItem.id).where(ContentItem.archived_at.is_(None))
+    for f in facet:
+        n, _, v = f.partition("=")
+        if n and v:
+            base = base.where(ContentItem.id.in_(select(ContentFacet.content_id).where(
+                ContentFacet.facet == n, ContentFacet.value == v)))
+    out = {}
+    for n in name:
+        rows = session.execute(
+            select(ContentFacet.value, func.count(func.distinct(ContentFacet.content_id)))
+            .where(ContentFacet.facet == n, ContentFacet.content_id.in_(base))
+            .group_by(ContentFacet.value).order_by(func.count(func.distinct(
+                ContentFacet.content_id)).desc())).all()
+        out[n] = [{"value": v, "count": c} for v, c in rows]
     return out

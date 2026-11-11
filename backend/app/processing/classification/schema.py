@@ -16,10 +16,27 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
-PROMPT_VERSION = "classification.v4"
+PROMPT_VERSION = "classification.v5"
 
-POST_TYPES = ("eat_drink", "trip", "property", "job", "recommendations", "how_to", "shopping",
-              "event", "thought", "fun", "other")
+POST_TYPES = ("eat_drink", "place", "trip", "property", "job", "recommendations", "how_to",
+              "shopping", "event", "thought", "fun", "other")
+PLACE_KINDS = ("shop", "market", "bookstore", "art_supplies", "museum", "art_gallery", "park",
+               "monument", "temple_religious", "activity", "workshop_studio", "salon_spa",
+               "gym_studio", "library", "coworking", "other")
+GENRES = (
+    # books
+    "literary_fiction", "fiction", "mystery_thriller", "romance", "fantasy_scifi",
+    "historical_fiction", "memoir_biography", "self_help", "poetry", "philosophy", "history",
+    "politics_society", "feminism", "business_finance", "science", "psychology", "classics",
+    # films / series
+    "drama", "comedy", "thriller", "horror", "action", "documentary", "animation", "crime",
+    "romcom", "short_film",
+    # music
+    "bollywood", "indie", "pop", "rock", "classical", "hiphop", "sufi_ghazal", "lofi",
+    "devotional", "folk",
+    # apps / websites / products
+    "job_search", "productivity", "learning", "finance_app", "design", "ai_tool", "other",
+)
 TOPICS = ("food_drinks", "travel", "books", "films_music_shows", "real_estate", "jobs_career",
           "tech_ai", "money", "health_fitness", "fashion_beauty", "shopping_gifts",
           "art_craft_diy", "relationships", "self_mind", "pets_animals", "news_society",
@@ -129,6 +146,22 @@ class EatDrink(_M):
     venues: list[Venue] = []
 
 
+class PlaceVisit(_M):
+    """Non-food place to visit: shop, market, museum, park, activity, studio…"""
+    name: str
+    kind: One(PLACE_KINDS) = None
+    location: Location = Field(default_factory=Location)
+    good_for: Many(GOOD_FOR) = []
+    vibe: Many(VIBES) = []
+    price_note: str | None = None
+    notes: str | None = None
+    evidence: Evidence = "explicit"
+
+
+class Places(_M):
+    places: list[PlaceVisit] = []
+
+
 class Trek(_M):
     name: str | None = None
     difficulty: One(DIFFICULTY) = None
@@ -182,7 +215,7 @@ class Job(_M):
 class RecItem(_M):
     title: str
     creator: str | None = None
-    genre: str | None = None
+    genre: One(GENRES) = None
     why: str | None = None
     evidence: Evidence = "explicit"
 
@@ -242,6 +275,9 @@ class Fun(_M):
 
 class Classification(_M):
     title: str = Field(max_length=200)
+    # One factual sentence of what's useful, no meta ("this reel shows…", "the caption
+    # doesn't say…"). Empty when there's nothing useful.
+    gist: str | None = None
     summary: str
     post_type: Annotated[str, _one(POST_TYPES)]
     topic: Annotated[str, _one(TOPICS)]
@@ -254,6 +290,7 @@ class Classification(_M):
     confidence: float = Field(ge=0, le=1)
 
     eat_drink: EatDrink | None = None
+    place: Places | None = None
     trip: Trip | None = None
     property: Property | None = None
     job: Job | None = None

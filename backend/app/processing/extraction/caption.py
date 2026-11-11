@@ -24,9 +24,11 @@ from app.db.models import AuditLog, ContentItem, ContentSource
 from app.processing.ai.provider import Completion, LLMProvider, ProviderError
 from app.processing.classification.schema import (
     CUISINES,
+    GENRES,
     GOOD_FOR,
     HOWTO_DOMAINS,
     HUMOUR,
+    PLACE_KINDS,
     PRICE_LEVELS,
     PROMPT_VERSION,
     REC_KINDS,
@@ -63,11 +65,17 @@ Hard rules:
 - Locations: copy what the post says into place/area/city/state/country. Use the locality as
   written (e.g. "Hauz Khas", "Sector 18", "Indirapuram"); do NOT convert it to a zone like
   "South Delhi" yourself. Fill city/state only if stated or unambiguous from a well-known place.
+- "gist": ONE short factual sentence with only the useful information (what/where/how much),
+  e.g. "Kunzum Travel Café, Hauz Khas Village: pay-what-you-like coffee, quiet for work".
+  Never describe the post itself ("this reel shows…", "the creator says…") and never mention
+  missing information. null if the post has no useful information (memes, vague posts).
 - English for title/summary/takeaways; keep proper nouns as written; "language" = ISO 639-1.
 - JSON only. No markdown.
 
 Choose ONE "post_type" (what the post is FOR):
 - eat_drink: café, restaurant, bar, street food, bakery… to visit
+- place: a non-food place to visit in a city: shop, market, bookstore, museum, gallery, park,
+  monument, activity, studio/workshop, salon, coworking
 - trip: destination, trek, itinerary, stay, travel tips
 - property: flat/house/plot for sale or rent
 - job: job opening, internship, hiring post
@@ -86,13 +94,16 @@ Fill ONLY the section matching post_type (others null). For "fun" fill only fun.
 keep summary to one sentence (no takeaways/tips).
 
 JSON shape:
-{{"title": str, "summary": str, "post_type": str, "topic": str, "subtopic": str|null,
- "key_takeaways": [str], "tips": [str], "tags": [str], "language": str|null,
+{{"title": str, "gist": str|null, "summary": str, "post_type": str, "topic": str,
+ "subtopic": str|null, "key_takeaways": [str], "tips": [str], "tags": [str], "language": str|null,
  "information_sufficient": bool, "confidence": float,
  "eat_drink": {{"venues": [{{"name": str, "venue_type": {"|".join(VENUE_TYPES)},
    "cuisines": [{"|".join(CUISINES)}], "dishes": [str],
    "location": LOC, "good_for": [{"|".join(GOOD_FOR)}], "vibe": [{"|".join(VIBES)}],
    "price_level": {"|".join(PRICE_LEVELS)}|null, "price_note": str|null, "notes": str|null,
+   "evidence": "explicit|inferred"}}]}} | null,
+ "place": {{"places": [{{"name": str, "kind": {"|".join(PLACE_KINDS)}, "location": LOC,
+   "good_for": [...], "vibe": [...], "price_note": str|null, "notes": str|null,
    "evidence": "explicit|inferred"}}]}} | null,
  "trip": {{"scope": "india|international", "destinations": [LOC],
    "trip_types": [{"|".join(TRIP_TYPES)}], "terrain": [{"|".join(TERRAIN)}],
@@ -104,8 +115,8 @@ JSON shape:
    "location": LOC}} | null,
  "job": {{"role", "company", "mode": "remote|onsite|hybrid", "location": LOC, "experience",
    "deadline", "how_to_apply"}} | null,
- "recommendations": {{"kind": {"|".join(REC_KINDS)}, "items": [{{"title", "creator", "genre",
-   "why", "evidence"}}]}} | null,
+ "recommendations": {{"kind": {"|".join(REC_KINDS)}, "items": [{{"title", "creator",
+   "genre": {"|".join(GENRES)}, "why", "evidence"}}]}} | null,
  "how_to": {{"domain": {"|".join(HOWTO_DOMAINS)}, "steps": [str], "tools": [str],
    "workout": {{"body_parts": [str], "equipment": [str]}}|null,
    "recipe": {{"name", "cuisine", "diet": "veg|non_veg|vegan|eggetarian", "time",
@@ -264,9 +275,12 @@ def persist_success(session: Session, item: ContentItem, inp: ExtractionInput,
             },
         },
     }
+    from app.processing.classification.archive import apply_visibility
     from app.processing.classification.facets import replace_facets
 
-    replace_facets(session, item.id, ex.model_dump(mode="json"))
+    data = ex.model_dump(mode="json")
+    replace_facets(session, item.id, data)
+    apply_visibility(item, data)
     session.add(AuditLog(entity_type="content_item", entity_id=item.id,
                          action=f"{JOB_TYPE}.completed",
                          details={"attempts": result.attempts, "model": result.completion.model,

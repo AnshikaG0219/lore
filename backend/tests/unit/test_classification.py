@@ -14,7 +14,16 @@ from app.processing.classification.schema import Classification
                                            "Chandni Chowk")),
     (("Rajouri Garden",), Place("India", "Delhi", "Delhi", "West Delhi", "Rajouri Garden")),
     (("Sector 18", "Noida"), Place("India", "Uttar Pradesh", "Noida", None, "Sector 18")),
-    (("Greater Noida West",), Place("India", "Uttar Pradesh", "Noida", None, "Greater Noida West")),
+    (("Greater Noida West",), Place("India", "Uttar Pradesh", "Greater Noida", None,
+                                    "Greater Noida West")),
+    (("Prashant Vihar", "Delhi"), Place("India", "Delhi", "Delhi", "North Delhi",
+                                        "Prashant Vihar")),
+    (("Pandav Nagar",), Place("India", "Delhi", "Delhi", "East Delhi", "Pandav Nagar")),
+    (("Kundli",), Place("India", "Haryana", "Sonipat", None, "Kundli")),
+    (("Murthal paranthas",), Place("India", "Haryana", "Sonipat", None, "Murthal")),
+    (("Sector 62", "Noida"), Place("India", "Uttar Pradesh", "Noida", None, "Sector 62")),
+    (("Sec 104", "Noida"), Place("India", "Uttar Pradesh", "Noida", None, "Sector 104")),
+    (("Sec. 18", "Noida"), Place("India", "Uttar Pradesh", "Noida", None, "Sector 18")),
     (("Indirapuram",), Place("India", "Uttar Pradesh", "Ghaziabad", None, "Indirapuram")),
     (("CyberHub", "Gurgaon"), Place("India", "Haryana", "Gurugram", None, "Cyberhub")),
     (("Delhi",), Place("India", "Delhi", "Delhi", None, None)),
@@ -94,3 +103,31 @@ def test_unknown_values_map_to_other():
                                        "topic": "zodiac", "information_sufficient": True,
                                        "confidence": 0.5})
     assert (c.post_type, c.topic) == ("other", "other")
+
+
+def test_ambiguous_words_do_not_resolve_to_delhi():
+    assert resolve("Welcome to my channel") == Place()
+    assert resolve("Street food in Dhaka, Bangladesh") == Place()
+
+
+def test_auto_hide_rules_and_overrides():
+    from app.db.models import ContentItem
+    from app.processing.classification.archive import apply_visibility, set_override
+
+    it = ContentItem()
+    for cls, reason in [({"post_type": "fun"}, "fun"), ({"post_type": "thought"}, "thought"),
+                        ({"post_type": "trip", "information_sufficient": False}, "unclear"),
+                        ({"post_type": "trip", "information_sufficient": False,
+                          "trip": {"destinations": [{"city": "Varanasi"}]}}, None),
+                        ({"post_type": "how_to", "information_sufficient": False,
+                          "how_to": {"recipe": {"name": "Dal pharra"}}}, "unclear"),
+                        ({"post_type": "trip", "information_sufficient": True}, None)]:
+        it.visibility_override = None
+        apply_visibility(it, cls)
+        assert it.archive_reason == reason and (it.archived_at is not None) == bool(reason)
+    set_override(it, "keep", {"post_type": "fun"})
+    assert it.archived_at is None  # user's keep beats the rule
+    apply_visibility(it, {"post_type": "fun"})  # e.g. after a reprocess
+    assert it.archived_at is None
+    set_override(it, "hide", {"post_type": "trip", "information_sufficient": True})
+    assert it.archive_reason == "manual"

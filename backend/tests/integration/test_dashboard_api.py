@@ -173,3 +173,29 @@ def test_dashboard_is_revalidated_and_versions_match(client):
     js_v = re.search(r'const UI_VERSION = "(\w+)"', client.get("/dashboard/app.js").text).group(1)
     assert page_v == js_v
     assert f"app.js?v={page_v}" in page.text and f"styles.css?v={page_v}" in page.text
+
+
+def test_hidden_posts_excluded_and_restorable(client):
+    items = client.get("/api/v1/content", headers=H).json()["items"]
+    cid = items[0]["id"]
+    r = client.post(f"/api/v1/content/{cid}/visibility", headers=H, json={"choice": "hide"})
+    assert r.json()["hidden"] is True and r.json()["reason"] == "manual"
+    assert client.get("/api/v1/content", headers=H).json()["total"] == 2
+    assert client.get("/api/v1/content?visibility=hidden", headers=H).json()["total"] == 1
+    f = client.get("/api/v1/facets", headers=H).json()
+    assert {"value": "manual", "count": 1} in f["hidden"]
+    assert sum(s["count"] for s in f["source_types"]) < 6  # hidden post's sources excluded
+    r = client.post(f"/api/v1/content/{cid}/visibility", headers=H, json={"choice": "keep"})
+    assert r.json()["hidden"] is False
+    assert client.get("/api/v1/content", headers=H).json()["total"] == 3
+    assert client.post(f"/api/v1/content/{cid}/visibility", headers=H,
+                       json={"choice": "delete"}).status_code == 422
+
+
+def test_dashboard_js_never_passes_null_to_replace_children(client):
+    """replaceChildren(null) renders the text "null" (unlike h(), which skips it)."""
+    import re
+
+    js = client.get("/dashboard/app.js").text
+    assert not re.search(r"\?\s*null\s*:\s*h\(", js)
+    assert not re.search(r":\s*h\([^;]*\)\s*\?\s*null", js)
