@@ -55,11 +55,22 @@ def dispatch(job_ids: list[uuid.UUID]) -> int:
     return len(sent)
 
 
+def _broker_backlog() -> int:
+    """Messages waiting in the pipeline queue (0 if unknown)."""
+    from app.workers.celery_app import PIPELINE_QUEUE
+
+    try:
+        with celery_app.connection_for_read() as conn:
+            return conn.default_channel.client.llen(PIPELINE_QUEUE)
+    except Exception:
+        return 0
+
+
 @celery_app.task(name="lore.pipeline.sweep")
 def sweep_pipeline_task() -> int:
     settings = get_settings()
     with _factory()() as session:
-        due = q.due_jobs(session,
+        due = q.due_jobs(session, broker_backlog=_broker_backlog(),
                          stale_after=timedelta(seconds=settings.pipeline_stale_seconds),
                          redispatch_after=timedelta(seconds=settings.pipeline_redispatch_seconds),
                          limit=settings.pipeline_sweep_batch)

@@ -176,7 +176,7 @@ def retry_later(session: Session, job_id: uuid.UUID, token: str, error: str,
 
 
 def due_jobs(session: Session, *, stale_after: timedelta, redispatch_after: timedelta,
-             limit: int = 500) -> list[uuid.UUID]:
+             limit: int = 500, broker_backlog: int = 0) -> list[uuid.UUID]:
     """Jobs the sweep should (re)dispatch, highest priority first.
 
     - queued and never dispatched, or dispatched long ago (message lost)
@@ -194,7 +194,10 @@ def due_jobs(session: Session, *, stale_after: timedelta, redispatch_after: time
     for job_id, status, dispatched_at, next_at, hb in rows:
         if status == JobStatus.QUEUED:
             d = aware(dispatched_at)
-            ok = d is None or t - d >= redispatch_after
+            # Re-send a waiting job only if its message can actually have been lost: if the
+            # broker still holds messages, a long backlog is just slow, not lost (re-sending
+            # it flooded the queue with duplicates during the 2,500-post run).
+            ok = d is None or (t - d >= redispatch_after and broker_backlog == 0)
         elif status == JobStatus.RETRY_WAIT:
             ok = aware(next_at) is None or aware(next_at) <= t
         else:
