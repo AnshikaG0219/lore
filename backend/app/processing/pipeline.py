@@ -203,7 +203,14 @@ class PipelineRunner:
                 q.set_stage(session, job_id, token, PS.EXTRACTING_MEDIA
                             if asset_type == "image" else PS.TRANSCRIBING)
                 engines = engines or self.engines()
-                r = process_asset(session, asset_id, engines, self.store)
+
+                def checkpoint() -> None:  # fencing + heartbeat between video frames
+                    with self.factory() as s2:
+                        job = q.owned(s2, job_id, token)
+                        job.heartbeat_at = q.now()
+                        s2.commit()
+
+                r = process_asset(session, asset_id, engines, self.store, checkpoint=checkpoint)
                 if r["status"] == "completed":
                     summary["processed"] += 1
                 else:

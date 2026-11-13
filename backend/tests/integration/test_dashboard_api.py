@@ -146,3 +146,30 @@ def test_dashboard_served_with_security_headers(client):
     assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
     js = client.get("/dashboard/app.js").text
     assert "innerHTML" not in js.replace("never innerHTML", "")  # all rendering via textContent
+
+
+def test_found_counts_and_needs_help_reasons(client):
+    items = client.get("/api/v1/content?category=travel", headers=H).json()["items"]
+    assert items[0]["found"] == {"places": 1}
+    f = client.get("/api/v1/facets", headers=H).json()
+    assert "needs_help_reasons" in f and "jobs" in f
+
+
+def test_dashboard_js_never_renders_bare_zero(client):
+    """`list.length && x` renders "0" for empty lists; checks must use `> 0`."""
+    import re
+
+    js = client.get("/dashboard/app.js").text
+    assert not re.search(r"\.length\s*&&", js)
+
+
+def test_dashboard_is_revalidated_and_versions_match(client):
+    import re
+
+    page = client.get("/dashboard/")
+    assert page.headers["cache-control"] == "no-cache"
+    assert client.get("/dashboard/app.js").headers["cache-control"] == "no-cache"
+    page_v = re.search(r'name="lore-ui-version" content="(\w+)"', page.text).group(1)
+    js_v = re.search(r'const UI_VERSION = "(\w+)"', client.get("/dashboard/app.js").text).group(1)
+    assert page_v == js_v
+    assert f"app.js?v={page_v}" in page.text and f"styles.css?v={page_v}" in page.text

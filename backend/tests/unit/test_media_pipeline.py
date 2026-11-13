@@ -205,3 +205,45 @@ def test_upload_media_api(session_factory, item_id, tmp_path):
                       files=[("files", ("x.sh", b"#!", "text/plain"))]).status_code == 415
         assert c.get(f"/api/v1/content/{uuid.uuid4()}/media", headers=h).status_code == 404
         assert c.get(f"/api/v1/content/{item_id}/media").status_code == 401
+
+
+def test_ocr_row_stored_by_another_runner_is_not_an_error(session_factory, item_id, tmp_path,
+                                                          fake_video_tools):
+    """Laptop-sleep race: a superseded runner stores a frame between our check and insert."""
+    store = LocalMediaStore(tmp_path, 10**6)
+    asset, _ = _attach(session_factory, store, item_id, MP4, "reel.mp4")
+
+    class RacingOcr(FakeOcr):
+        def read(self, path):
+            result = super().read(path)
+            if self.calls == 2:  # the other runner commits frame t=2.0 first
+                with session_factory() as other:
+                    other.add(OcrText(content_id=item_id, media_asset_id=asset.id, frame_time=2.0,
+                                      text="theirs", confidence=0.9, engine=self.name))
+                    other.commit()
+            return result
+
+    with session_factory() as s:
+        r = pl.process_asset(s, asset.id, pl.MediaEngines(RacingOcr(), FakeTranscriber()), store)
+        assert r["status"] == "completed"
+        assert s.query(OcrText).count() == 3  # one row per frame, no duplicates
+
+
+def test_checkpoint_stops_superseded_runner_between_frames(session_factory, item_id, tmp_path,
+                                                           fake_video_tools):
+    from app.processing.queue import JobClaimLostError
+
+    store = LocalMediaStore(tmp_path, 10**6)
+    asset, _ = _attach(session_factory, store, item_id, MP4, "reel.mp4")
+    ocr = FakeOcr()
+    calls = []
+
+    def checkpoint():
+        calls.append(1)
+        if len(calls) == 2:
+            raise JobClaimLostError("taken over")
+
+    with session_factory() as s, pytest.raises(JobClaimLostError):
+        pl.process_asset(s, asset.id, pl.MediaEngines(ocr, FakeTranscriber()), store,
+                         checkpoint=checkpoint)
+    assert ocr.calls == 1  # stopped after the first frame

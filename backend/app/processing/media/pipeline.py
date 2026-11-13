@@ -10,12 +10,14 @@ import logging
 import re
 import tempfile
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import ContentItem, MediaAsset, OcrText, Transcript
@@ -70,10 +72,9 @@ def _ocr(session: Session, asset: MediaAsset, image: Path, frame_time: float,
     if _has_ocr(session, asset.id, frame_time, engine.name):
         return
     result = engine.read(image)
-    session.add(OcrText(content_id=asset.content_id, media_asset_id=asset.id,
-                        frame_time=frame_time, text=result.text,
-                        confidence=result.confidence, engine=engine.name))
-    session.commit()
+    _insert_once(session, OcrText(content_id=asset.content_id, media_asset_id=asset.id,
+                                  frame_time=frame_time, text=result.text,
+                                  confidence=result.confidence, engine=engine.name))
 
 
 def _transcribe(session: Session, asset: MediaAsset, audio: Path,
@@ -84,16 +85,30 @@ def _transcribe(session: Session, asset: MediaAsset, audio: Path,
     if done:
         return
     r = transcriber.transcribe(audio)
-    session.add(Transcript(content_id=asset.content_id, media_asset_id=asset.id,
-                           language=r.language, language_probability=r.language_probability,
-                           transcript_text=r.text, timestamped_segments=r.segments,
-                           duration_seconds=r.duration, provider=transcriber.provider,
-                           model=transcriber.model))
-    session.commit()
+    _insert_once(session, Transcript(
+        content_id=asset.content_id, media_asset_id=asset.id, language=r.language,
+        language_probability=r.language_probability, transcript_text=r.text,
+        timestamped_segments=r.segments, duration_seconds=r.duration,
+        provider=transcriber.provider, model=transcriber.model))
+
+
+def _insert_once(session: Session, row) -> None:
+    """Insert a result row; if another runner already stored it, keep theirs.
+
+    Results are deterministic per (asset, frame/model), so a unique-key conflict means the work
+    is already done (e.g. a superseded runner that woke up after a laptop sleep).
+    """
+    try:
+        session.add(row)
+        session.commit()
+    except IntegrityError:
+        session.rollback()
 
 
 def process_asset(session: Session, asset_id: uuid.UUID, engines: MediaEngines,
-                  store: LocalMediaStore, *, force: bool = False) -> dict:
+                  store: LocalMediaStore, *, force: bool = False,
+                  checkpoint: Callable[[], None] | None = None) -> dict:
+    """``checkpoint`` is called between frames; it raises if this runner lost its job."""
     asset = session.get(MediaAsset, asset_id)
     if asset is None:
         return {"asset_id": str(asset_id), "status": "missing"}
@@ -118,6 +133,8 @@ def process_asset(session: Session, asset_id: uuid.UUID, engines: MediaEngines,
                                                   engines.frame_interval, engines.max_frames,
                                                   info["duration"])
                     for t, frame in frames:
+                        if checkpoint:
+                            checkpoint()
                         _ocr(session, asset, frame, t, engines.ocr)
     except (OSError, ffmpeg.MediaToolError, OcrError, TranscriptionError) as exc:
         session.rollback()
