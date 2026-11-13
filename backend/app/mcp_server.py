@@ -3,7 +3,8 @@ Notion connection) read your useful posts and keep a Notion database in sync (AD
 
 Access: bearer key (LORE_MCP_KEY), separate from the admin API key. Capabilities are limited
 to reading posts and recording Notion sync status; nothing can be hidden, deleted or reprocessed.
-Run: python -m app.mcp_server  (listens on LORE_MCP_HOST:LORE_MCP_PORT, default 0.0.0.0:8765)
+Run: python -m app.mcp_server          (HTTP on LORE_MCP_HOST:LORE_MCP_PORT, default :8765)
+     python -m app.mcp_server --stdio  (launched directly by a local assistant, no network)
 """
 
 from __future__ import annotations
@@ -393,6 +394,14 @@ def build_app():
 
 
 def main() -> None:
+    import sys
+
+    if "--stdio" in sys.argv:
+        # Local assistant on this machine (e.g. Claude Desktop launching Lore itself): no network,
+        # no key. stdout carries the protocol, so nothing else may print to it.
+        mcp.run("stdio")
+        return
+
     import uvicorn
 
     settings = get_settings()

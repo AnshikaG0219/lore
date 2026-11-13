@@ -233,6 +233,26 @@ curl -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
 ```
 Fetching is paced (one request per 8s) and pauses for 30 minutes if Instagram pushes back.
 
+### Use Lore from Claude Desktop on this machine
+
+Claude Desktop can launch Lore's MCP server directly (stdio: no network, no key). In
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "lore": {
+      "command": "/ABSOLUTE/PATH/backend/.venv/bin/python",
+      "args": ["-m", "app.mcp_server", "--stdio"],
+      "env": { "PYTHONPATH": "/ABSOLUTE/PATH/backend",
+               "LORE_DATABASE_URL": "postgresql+psycopg://lore:lore@localhost:5433/lore" }
+    }
+  }
+}
+```
+Restart Claude Desktop. Lore's database must be running (`docker compose up -d postgres`).
+(On corporate laptops `npx mcp-remote` may fail to download through the internal npm
+registry; the stdio setup above needs no Node.js.)
+
 ### Use Lore from Claude on another machine (e.g. to sync Notion)
 
 **Same Wi-Fi (simplest):** set `LORE_MCP_ALLOWED_HOSTS=<this-mac>.local,<this-mac-IP>`
