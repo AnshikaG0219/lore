@@ -37,9 +37,10 @@ MAX_LIMIT = 50
 
 INSTRUCTIONS = """Lore holds the user's Instagram saves and posts friends shared, already
 classified into facts. Hidden posts (memes, quotes, posts with no information) are excluded
-unless asked for. Use search_posts / get_post to read; to sync Notion use the
-'sync_to_notion' prompt, posts_to_sync and mark_synced. Never invent facts: copy them from
-Lore's data."""
+unless asked for. Start with overview() to see every category; use list_category to fetch all
+posts of a category (paged), search_posts for targeted questions and get_post for one post.
+To sync Notion use the 'sync_to_notion' prompt, posts_to_sync and mark_synced. Never invent
+facts: copy them from Lore's data."""
 
 mcp = MCPServer(name="lore", title="Lore: your Instagram knowledge base",
                 instructions=INSTRUCTIONS, version="1.0")
@@ -218,6 +219,122 @@ def mark_synced(post_id: str, notion_page_id: str, archived: bool = False) -> di
         item.updated_at = now  # same instant, so this write doesn't count as a change
         s.commit()
         return {"id": post_id, "status": item.notion_sync_status}
+
+
+# --------------------------------------------------------------------------------------------
+# Whole-library access: overview → category → every post (paged), or a category document.
+
+TYPE_LABELS = {"eat_drink": "Eat & drink", "place": "Places to visit", "trip": "Trip ideas",
+               "property": "Property", "job": "Jobs & opportunities",
+               "recommendations": "Recommendations", "how_to": "How-tos & recipes",
+               "shopping": "Shopping", "event": "Events", "other": "Other"}
+BREAKDOWN = {  # sub-groups shown per type in overview()
+    "eat_drink": ["venue.city", "zone", "venue_type", "cuisine"],
+    "place": ["place.city", "zone", "place_kind"],
+    "trip": ["trip_scope", "trip.state", "trip.country", "trip_type"],
+    "property": ["property.city", "zone", "deal", "bhk"],
+    "job": ["job_mode", "job.city"],
+    "recommendations": ["rec_kind", "genre"],
+    "how_to": ["howto_domain", "diet"],
+    "shopping": ["origin"], "event": ["event.city"], "other": ["topic"],
+}
+KEY_FACETS = ("venue_type", "cuisine", "place_kind", "trip_type", "terrain", "trek_difficulty",
+              "deal", "bhk", "job_mode", "rec_kind", "genre", "howto_domain", "diet",
+              "good_for", "vibe", "price_level")
+
+
+def _counts(s, facet: str, base) -> list[tuple[str, int]]:
+    return [(v, c) for v, c in s.execute(
+        select(ContentFacet.value, func.count(func.distinct(ContentFacet.content_id)))
+        .where(ContentFacet.facet == facet, ContentFacet.content_id.in_(base))
+        .group_by(ContentFacet.value)
+        .order_by(func.count(func.distinct(ContentFacet.content_id)).desc())).all()]
+
+
+def _visible_ids(type_: str | None = None):
+    stmt = select(ContentItem.id).where(ContentItem.archived_at.is_(None),
+                                        ContentItem.last_processed_at.is_not(None))
+    return _filtered(stmt, {"type": type_}) if type_ else stmt
+
+
+def _compact(item: ContentItem, facets: dict[str, list[str]]) -> str:
+    """One dense line: title — gist | where | key facts | link."""
+    c = _card(item, facets)
+    where = ", ".join(c["areas"][:4] + (c["location"].get("zone") or [])
+                      + (c["location"].get("city") or c["location"].get("state")
+                         or c["location"].get("country") or [])[:2])
+    keys = "; ".join(f"{k}: {', '.join(facets[k][:4])}" for k in KEY_FACETS if facets.get(k))
+    parts = [f"{c['title']} — {c['gist']}" if c["gist"] else c["title"]]
+    parts += [f"where: {where}" if where else None, keys or None, c["instagram_url"]]
+    return " | ".join(p for p in parts if p)
+
+
+@mcp.tool(annotations=READ)
+def overview() -> dict:
+    """START HERE to see the whole library: every category (post type) with its number of
+    useful posts and its main sub-groups (e.g. Eat & drink by city/zone/cuisine, Trips by
+    state/trip type, Recommendations by kind/genre). Then use list_category to fetch every
+    post in a category, or read the resource lore://category/{type}."""
+    with _session() as s:
+        total = s.scalar(select(func.count()).select_from(_visible_ids().subquery()))
+        hidden = s.scalar(select(func.count()).where(ContentItem.archived_at.is_not(None)))
+        cats = []
+        for t, n in _counts(s, "type", _visible_ids()):
+            base = _visible_ids(t)
+            cats.append({"type": t, "label": TYPE_LABELS.get(t, t), "posts": n,
+                         "breakdown": {f: [{"value": v, "count": c} for v, c in
+                                           _counts(s, f, base)[:12]]
+                                       for f in BREAKDOWN.get(t, [])}})
+        return {"useful_posts": total, "hidden_posts": hidden, "categories": cats,
+                "how_to_fetch": "list_category(type=..., page=1) until next_page is null"}
+
+
+@mcp.tool(annotations=READ)
+def list_category(type: str, page: int = 1, page_size: int = 50, format: str = "compact",
+                  city: str | None = None, zone: str | None = None, state: str | None = None,
+                  country: str | None = None, cuisine: str | None = None,
+                  venue_type: str | None = None, trip_type: str | None = None,
+                  origin: str | None = None) -> dict:
+    """Every useful post in one category, page by page (oldest pages stay stable: ordered by
+    save date, newest first). format="compact" → one line per post (best for reading a whole
+    category); format="full" → all details per post (best for creating Notion pages).
+    page_size: compact up to 100, full up to 25. Keep calling with next_page until null."""
+    full = format == "full"
+    page_size = max(1, min(page_size, 25 if full else 100))
+    page = max(1, page)
+    with _session() as s:
+        stmt = _filtered(select(ContentItem).where(ContentItem.archived_at.is_(None),
+                                                   ContentItem.last_processed_at.is_not(None)),
+                         dict(type=type, city=city, zone=zone, state=state, country=country,
+                              cuisine=cuisine, venue_type=venue_type, trip_type=trip_type,
+                              origin=origin))
+        total = s.scalar(select(func.count()).select_from(stmt.subquery()))
+        items = s.scalars(stmt.order_by(ContentItem.first_captured_at.desc().nulls_last(),
+                                        ContentItem.id)
+                          .limit(page_size).offset((page - 1) * page_size)).all()
+        facets = _facets(s, [i.id for i in items])
+        pages = max(1, -(-total // page_size))
+        return {"type": type, "label": TYPE_LABELS.get(type, type), "total": total,
+                "page": page, "pages": pages, "next_page": page + 1 if page < pages else None,
+                "posts": [_full(i, facets[i.id], False) if full else
+                          {"id": str(i.id), "line": _compact(i, facets[i.id])} for i in items]}
+
+
+@mcp.resource("lore://category/{type}", title="A whole Lore category",
+              description="Every useful post in a category as a Markdown list "
+                          "(eat_drink, place, trip, property, job, recommendations, how_to, "
+                          "shopping, event, other).", mime_type="text/markdown")
+def category_document(type: str) -> str:
+    with _session() as s:
+        stmt = _filtered(select(ContentItem).where(ContentItem.archived_at.is_(None),
+                                                   ContentItem.last_processed_at.is_not(None)),
+                         {"type": type})
+        items = s.scalars(stmt.order_by(ContentItem.first_captured_at.desc().nulls_last())
+                          .limit(2000)).all()
+        facets = _facets(s, [i.id for i in items])
+        lines = [f"# {TYPE_LABELS.get(type, type)} ({len(items)} posts)", ""]
+        lines += [f"- {_compact(i, facets[i.id])}" for i in items]
+        return "\n".join(lines)
 
 
 @mcp.prompt(title="Sync Lore to Notion")

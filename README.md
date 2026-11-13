@@ -262,4 +262,7 @@ next to its Notion connector. Reach it privately with **Tailscale**; never expos
 3. Restart Claude Desktop. Ask: *"Use the Lore 'Sync Lore to Notion' prompt"* or e.g.
    *"Find cafés in South Delhi in Lore and add them to my Notion"*.
 
-Tools: `search_posts`, `get_post`, `facet_values`, `posts_to_sync`, `mark_synced`.
+Tools: `overview` (start here: every category with counts and sub-groups), `list_category`
+(every post in a category, paged; `compact` one-liners or `full` details), `search_posts`,
+`get_post`, `facet_values`, `posts_to_sync`, `mark_synced`. Resource `lore://category/{type}`
+returns a whole category as Markdown. Prompt: *Sync Lore to Notion*.

@@ -108,3 +108,54 @@ def test_http_requires_key(monkeypatch):
     with TestClient(m.build_app()) as c:
         assert c.post("/mcp", json={}).status_code == 401
         assert c.post("/mcp", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401
+
+
+def test_overview_lists_categories_with_breakdown(items):
+    o = m.overview()
+    assert o["useful_posts"] == 1 and o["hidden_posts"] == 1
+    cat = o["categories"][0]
+    assert cat["type"] == "eat_drink" and cat["label"] == "Eat & drink" and cat["posts"] == 1
+    assert cat["breakdown"]["zone"] == [{"value": "South Delhi", "count": 1}]
+
+
+def test_list_category_pages_through_everything(items, session_factory):
+    with session_factory() as s:  # 5 more cafés → 6 visible eat_drink posts
+        user = get_or_create_user(s)
+        for i in range(5):
+            it = ContentItem(
+                user_id=user.id,
+                identity_key=f"x{i}",
+                canonical_url=f"https://www.instagram.com/p/X{i}/",
+                canonical_url_hash="h",
+                platform_content_id=f"X{i}",
+                content_type="post",
+                title=f"Cafe {i}",
+                extracted_data={"caption_extraction": CAFE},
+                tags=[],
+                last_processed_at=datetime.now(UTC),
+            )
+            s.add(it)
+            s.flush()
+            replace_facets(s, it.id, CAFE)
+        s.commit()
+    seen, page = [], 1
+    while page:
+        r = m.list_category("eat_drink", page=page, page_size=4)
+        seen += [p["id"] for p in r["posts"]]
+        page = r["next_page"]
+    assert len(seen) == len(set(seen)) == 6 and r["pages"] == 2
+    line = m.list_category("eat_drink", page_size=1)["posts"][0]["line"]
+    assert (
+        "where: Hauz Khas Village" in line
+        and "venue_type: cafe" in line
+        and "instagram.com" in line
+    )
+    full = m.list_category("eat_drink", format="full", page_size=500)
+    assert len(full["posts"]) == 6 and "details" in full["posts"][0]  # full is capped at 25/page
+    assert m.list_category("eat_drink", zone="North Delhi")["total"] == 0
+
+
+def test_category_document(items):
+    doc = m.category_document("eat_drink")
+    assert doc.startswith("# Eat & drink (1 posts)") and "\n- Kunzum" in doc
+    assert "secret caption" not in doc
