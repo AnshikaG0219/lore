@@ -235,6 +235,14 @@ Fetching is paced (one request per 8s) and pauses for 30 minutes if Instagram pu
 
 ### Use Lore from Claude on another machine (e.g. to sync Notion)
 
+**Same Wi-Fi (simplest):** set `LORE_MCP_ALLOWED_HOSTS=<this-mac>.local,<this-mac-IP>`
+(`scutil --get LocalHostName`, `ipconfig getifaddr en0`), run `docker compose up -d mcp`, and use
+`http://<this-mac>.local:8765/mcp` in the Claude Desktop config below. Traffic on a local
+network is plain HTTP: use it only on your own home Wi-Fi, never on office/café/shared Wi-Fi
+(the key could be read by others on the network). If macOS asks to allow incoming connections
+for Docker, allow it. **Away from home:** use Tailscale (below).
+
+
 Lore runs an MCP server (`mcp` service, port 8765) that another machine's Claude Desktop can use
 next to its Notion connector. Reach it privately with **Tailscale**; never expose it publicly.
 

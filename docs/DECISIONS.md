@@ -251,4 +251,7 @@ sync status. Transport security (DNS-rebinding protection) allows only configure
 **Network:** Tailscale (private), never the public internet. Claude Desktop's *Connectors* are
 contacted from Anthropic's cloud and can't reach a tailnet, so the other machine runs
 `mcp-remote` locally (stdio bridge) to reach `http://<tailscale-name>:8765/mcp`.
+**Same-Wi-Fi alternative (user's choice, 2026-11-13):** connect over the home LAN via
+`<mac>.local`; allowed hosts restricted to that name and IP. LAN traffic is unencrypted, so use
+it only on a trusted home network; Tailscale remains the option for anywhere else.
 **Trade-off:** sync only runs while this Mac is awake and Lore is running.
