@@ -57,6 +57,7 @@ class ContentItem(UUIDPk, Timestamps, Base):
     extraction_confidence: Mapped[float | None] = mapped_column(Float)
     notion_page_id: Mapped[str | None] = mapped_column(String(64), index=True)
     notion_sync_status: Mapped[str] = mapped_column(String(32), default=NotionSyncStatus.NOT_SYNCED)
+    notion_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Hidden from browsing/search/counts (never deleted). Reason: fun | thought | unclear | manual.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     archive_reason: Mapped[str | None] = mapped_column(String(32))

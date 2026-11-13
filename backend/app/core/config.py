@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     media_fetch_video_format: str = "best[height<=720]/best"
     media_fetch_max_bytes: int = Field(default=150 * 1024**2, gt=0)
 
+    # MCP server for assistants on other machines (ADR-026)
+    mcp_key: SecretStr | None = None
+    mcp_host: str = "0.0.0.0"
+    mcp_port: int = 8765
+    mcp_allowed_hosts: str = ""  # e.g. your Tailscale name "lore-mac.tailnet-xyz.ts.net,100.x.y.z"
+
     # GitHub token with Copilot access, used by the extraction task. Never logged.
     copilot_github_token: SecretStr | None = None
 
