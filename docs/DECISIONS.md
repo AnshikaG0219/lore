@@ -254,4 +254,8 @@ contacted from Anthropic's cloud and can't reach a tailnet, so the other machine
 **Same-Wi-Fi alternative (user's choice, 2026-11-13):** connect over the home LAN via
 `<mac>.local`; allowed hosts restricted to that name and IP. LAN traffic is unencrypted, so use
 it only on a trusted home network; Tailscale remains the option for anywhere else.
+**ngrok alternative (user's choice, 2026-11-13):** GlobalProtect/CrowdStrike on the work Mac
+blocked LAN access, so the server is published with `ngrok http 8765 --host-header=rewrite`
+(HTTPS). It's publicly reachable while running; protection is the 256-bit bearer key and the
+narrow tool set. Run the tunnel only while syncing.
 **Trade-off:** sync only runs while this Mac is awake and Lore is running.

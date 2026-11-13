@@ -240,7 +240,10 @@ Fetching is paced (one request per 8s) and pauses for 30 minutes if Instagram pu
 `http://<this-mac>.local:8765/mcp` in the Claude Desktop config below. Traffic on a local
 network is plain HTTP: use it only on your own home Wi-Fi, never on office/café/shared Wi-Fi
 (the key could be read by others on the network). If macOS asks to allow incoming connections
-for Docker, allow it. **Away from home:** use Tailscale (below).
+for Docker, allow it. **Away from home:** use Tailscale (below), or **ngrok** if VPN/security software blocks the
+other options: `ngrok http 8765 --host-header=rewrite`, then use the `https://…ngrok-free.dev/mcp`
+URL in the config (drop `--allow-http`). This makes the server reachable from the internet,
+protected by `LORE_MCP_KEY` (keep it secret; rotate it if leaked). Stop ngrok when not syncing.
 
 
 Lore runs an MCP server (`mcp` service, port 8765) that another machine's Claude Desktop can use
