@@ -2,7 +2,7 @@
 // Lore dashboard. All data is rendered with textContent via h() — never innerHTML —
 // because captions and titles are untrusted text.
 
-const UI_VERSION = "4"; // must match <meta name="lore-ui-version"> in index.html
+const UI_VERSION = "5"; // must match <meta name="lore-ui-version"> in index.html
 (function checkVersion() {
   // A cached page combined with a newer script breaks rendering; reload once to resync.
   const pageVersion = document.querySelector('meta[name="lore-ui-version"]')?.content;
@@ -29,6 +29,11 @@ const CATEGORY_LABELS = {
   health_and_fitness: "Health & Fitness", productivity: "Productivity", lifestyle: "Lifestyle",
   home_and_interior: "Home & Interior", entertainment: "Entertainment", education: "Education",
   miscellaneous: "Miscellaneous",
+  // v5 post types
+  eat_drink: "Eat & drink", place: "Places to visit", trip: "Trip ideas", property: "Property",
+  job: "Jobs & opportunities", recommendations: "Recommendations", how_to: "How-tos & recipes",
+  shopping: "Shopping", event: "Events", thought: "Thoughts & quotes", fun: "Just for fun",
+  other: "Other",
 };
 const STATUS_LABELS = {
   RECEIVED: "Not started", QUEUED: "In queue", COMPLETED: "Understood",
@@ -47,7 +52,30 @@ const CATEGORY_EMOJI = {
   shopping_and_products: "🛍️", fashion_and_beauty: "👗", health_and_fitness: "💪",
   productivity: "✅", lifestyle: "🌿", home_and_interior: "🏠", entertainment: "🎬",
   education: "🧠", miscellaneous: "🗂️",
+  eat_drink: "🍽️", place: "🏙️", trip: "🗺️", property: "🏠", job: "💼", recommendations: "📚",
+  how_to: "🛠️", shopping: "🛍️", event: "📅", thought: "💭", fun: "😂", other: "🗂️",
 };
+const HIDE_LABELS = { fun: "Just for fun", thought: "Thought / quote", unclear: "No useful information",
+  manual: "Hidden by you" };
+const FACET_LABELS = {
+  "venue.city": "City", "venue.zone": "Delhi zone", "venue.area": "Area", venue_type: "Type of place",
+  cuisine: "Cuisine", good_for: "Good for", vibe: "Vibe", price_level: "Price",
+  "place.city": "City", "place.zone": "Delhi zone", "place.area": "Area", place_kind: "Kind of place",
+  trip_scope: "India or abroad", "trip.state": "State", "trip.country": "Country",
+  trip_type: "Trip type", terrain: "Terrain", trek_difficulty: "Trek difficulty", stay: "Stay",
+  origin: "Saved or shared",
+};
+const VALUE_LABELS = { saved: "Saved by you", shared: "Shared with you", india: "India",
+  international: "Abroad", work_study: "Work / study", bakery_dessert: "Bakery & desserts",
+  street_food: "Street food", north_indian: "North Indian", south_indian: "South Indian",
+  multi_cuisine: "Multi-cuisine", live_music: "Live music", hidden_gem: "Hidden gem",
+  pet_friendly: "Pet-friendly", late_night: "Late night", road_trip: "Road trip",
+  wildlife_nature: "Wildlife & nature", heritage_culture: "Heritage & culture",
+  backpacking_solo: "Backpacking / solo", adventure_sports: "Adventure sports",
+  city_break: "City break", art_supplies: "Art supplies", temple_religious: "Temple / religious",
+  workshop_studio: "Workshop / studio", salon_spa: "Salon / spa", gym_studio: "Gym / studio" };
+const pretty = (v) => VALUE_LABELS[v] || CATEGORY_LABELS[v] ||
+  String(v).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 const HELP_REASONS = {
   not_attempted: "Only the caption was available (media not fetched yet)",
   deferred: "Waiting: Instagram asked us to slow down, will retry",
@@ -57,8 +85,11 @@ const HELP_REASONS = {
   no_media: "Post has no downloadable media",
   fetched: "Photo without readable text, or an unclear video",
 };
-const FOUND_LABELS = { places: "📍 places", books: "📚 books", products: "🛍️ products",
-  films_and_shows: "🎬 films & shows", tools: "🧰 tools", recipe: "🍳 recipe", tips: "💡 tips" };
+const FOUND_LABELS = { venues: "🍽️ spots", places: "📍 places", books: "📚 books",
+  films: "🎬 films", series: "📺 series", music: "🎵 songs", podcasts: "🎙️ podcasts",
+  products: "🛍️ products", apps: "📱 apps", courses: "🎓 courses", items: "⭐ picks",
+  listing: "🏠 listing", job: "💼 job", trek: "🥾 trek", recipe: "🍳 recipe", steps: "🪜 steps",
+  tips: "💡 tips", films_and_shows: "🎬 films & shows", tools: "🧰 tools" };
 const cat = (c) => CATEGORY_LABELS[c] || c || "—";
 
 // ---------- tiny safe DOM helper ----------
@@ -117,7 +148,9 @@ $("#logout").addEventListener("click", () => { sessionStorage.removeItem("lore-k
 // ---------- navigation ----------
 function show(view) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
-  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
+  const target = EXPLORE[view] ? "explore" : view;
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${target}`));
+  if (EXPLORE[view]) { explore.view = view; explore.filters = []; explore.offset = 0; loadExplore(); }
   if (view === "overview") loadOverview().catch(() => {});
   if (view === "content") loadContent();
   if (view === "places") loadPlaces();
@@ -249,9 +282,11 @@ function itemCard(it) {
     onkeydown: (e) => e.key === "Enter" && openDetail(it.id) },
     h("div", { class: "top" },
       h("span", { class: "title" }, it.title || it.caption_preview?.slice(0, 90) || it.url),
-      it.primary_category && h("span", { class: "chip cat" }, cat(it.primary_category)),
-      statusBadge(it.status, it.last_processed_at)),
-    it.summary && h("div", { class: "summary" }, it.summary),
+      it.primary_category && h("span", { class: "chip cat" },
+        `${CATEGORY_EMOJI[it.primary_category] || ""} ${cat(it.primary_category)}`.trim()),
+      it.hidden ? h("span", { class: "badge hidden-badge" }, `Hidden · ${HIDE_LABELS[it.hidden_reason] || it.hidden_reason}`)
+        : statusBadge(it.status, it.last_processed_at)),
+    (it.gist || it.summary) && h("div", { class: it.gist ? "gist" : "summary" }, it.gist || it.summary),
     h("div", { class: "meta" },
       h("span", {}, it.content_type),
       it.creator && h("span", {}, `@${it.creator}`),
@@ -302,53 +337,101 @@ function section(title, ...body) {
   const content = body.flat().filter(Boolean);
   return content.length ? h("div", { class: "section" }, h("h4", {}, title), ...content) : null;
 }
+const loc = (l) => l ? [l.place, l.area, l.city, l.state, l.country].filter(Boolean)
+  .filter((v, i, a) => a.indexOf(v) === i).join(", ") : "";
+const facts = (pairs) => {
+  const rows = pairs.filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length));
+  return rows.length ? h("dl", { class: "facts-grid" }, rows.flatMap(([k, v]) =>
+    [h("dt", {}, k), h("dd", {}, Array.isArray(v) ? v.map(pretty).join(", ") : String(v))])) : null;
+};
+function factsFor(x) {
+  const out = [];
+  const ed = x.eat_drink, pl = x.place, tr = x.trip, pr = x.property, jb = x.job;
+  const rec = x.recommendations, how = x.how_to, sh = x.shopping, evt = x.event;
+  if (ed?.venues?.length > 0) out.push(section("Spots", table(["Name", "Type", "Where", "Cuisine / dishes", "Notes", "Evidence"],
+    ed.venues.map((v) => [v.name, pretty(v.venue_type || "—"), loc(v.location),
+      [...(v.cuisines || []).map(pretty), ...(v.dishes || [])].join(", "),
+      [v.price_note, v.notes, ...(v.good_for || []).map(pretty), ...(v.vibe || []).map(pretty)].filter(Boolean).join(" · "),
+      ev(v.evidence)]))));
+  if (pl?.places?.length > 0) out.push(section("Places", table(["Name", "Kind", "Where", "Notes", "Evidence"],
+    pl.places.map((p) => [p.name, pretty(p.kind || "—"), loc(p.location), [p.price_note, p.notes].filter(Boolean).join(" · "), ev(p.evidence)]))));
+  if (tr) {
+    out.push(section("Trip", facts([["Where", (tr.destinations || []).map(loc).filter(Boolean).join("; ")],
+      ["Type", tr.trip_types], ["Terrain", tr.terrain], ["Duration", tr.duration], ["Budget", tr.budget],
+      ["Best time", tr.best_season], ["How to reach", tr.how_to_reach], ["Stay", tr.stays], ["Permits", tr.permits],
+      ["Trek", tr.trek ? [tr.trek.name, tr.trek.difficulty && pretty(tr.trek.difficulty), tr.trek.days && `${tr.trek.days} days`,
+        tr.trek.max_altitude_m && `${tr.trek.max_altitude_m} m`, tr.trek.base && `from ${tr.trek.base}`].filter(Boolean).join(" · ") : null]])));
+    if (tr.places_to_visit?.length > 0) out.push(section("Stops", table(["Name", "Kind", "Where", "Notes", "Evidence"],
+      tr.places_to_visit.map((p) => [p.name, p.kind || "—", loc(p.location), p.notes, ev(p.evidence)]))));
+  }
+  if (pr) out.push(section("Property", facts([["Deal", pr.deal && pretty(pr.deal)], ["BHK", pr.bhk],
+    ["Size", pr.size_sqft && `${pr.size_sqft} sq ft`], ["Price", pr.price], ["Project", pr.project], ["Where", loc(pr.location)]])));
+  if (jb) out.push(section("Job", facts([["Role", jb.role], ["Company", jb.company], ["Mode", jb.mode && pretty(jb.mode)],
+    ["Where", loc(jb.location)], ["Experience", jb.experience], ["Deadline", jb.deadline], ["Apply", jb.how_to_apply]])));
+  if (rec?.items?.length > 0) out.push(section(pretty(rec.kind || "Recommendations"), table(["Title", "By", "Genre", "Why", "Evidence"],
+    rec.items.map((i) => [i.title, i.creator, i.genre && pretty(i.genre), i.why, ev(i.evidence)]))));
+  if (how) {
+    const r = how.recipe;
+    if (r) out.push(section(`Recipe${r.name ? `: ${r.name}` : ""}`, facts([["Cuisine", r.cuisine && pretty(r.cuisine)],
+      ["Diet", r.diet && pretty(r.diet)], ["Time", r.time], ["Ingredients", r.ingredients]])));
+    if (how.workout) out.push(section("Workout", facts([["Body parts", how.workout.body_parts], ["Equipment", how.workout.equipment]])));
+    if (how.steps?.length > 0) out.push(section("Steps", h("ol", {}, how.steps.map((t) => h("li", {}, t)))));
+    if (how.tools?.length > 0) out.push(section("Tools", h("div", { class: "chips" }, how.tools.map((t) => h("span", { class: "chip" }, t)))));
+  }
+  if (sh?.products?.length > 0) out.push(section("Products", table(["Name", "Brand", "Price", "Where to buy", "Evidence"],
+    sh.products.map((p) => [p.name, p.brand, p.price, p.where_to_buy, ev(p.evidence)]))));
+  if (evt && evt.what) out.push(section("Event", facts([["What", evt.what], ["When", evt.date], ["Where", loc(evt.location)], ["Price", evt.price]])));
+  return out;
+}
 async function openDetail(id) {
   const d = await api(`/content/${id}`);
-  const x = d.extraction || {}; const info = x.extracted_information || {};
-  const list = (arr) => arr?.length ? h("ul", {}, arr.map((t) => h("li", {}, t))) : null;
-  const body = h("div", {},
-    h("h2", {}, d.title || "Untitled (not processed yet)"),
-    h("div", { class: "chips" }, statusBadge(d.status, d.last_processed_at),
-      d.primary_category && h("span", { class: "chip cat" }, cat(d.primary_category)),
-      d.secondary_category && h("span", { class: "chip" }, cat(d.secondary_category)),
-      x.subcategory && h("span", { class: "chip" }, x.subcategory),
-      d.confidence != null && h("span", { class: "chip" }, `confidence ${d.confidence}`)),
-    h("div", { class: "actions" },
-      h("a", { href: d.url, target: "_blank", rel: "noopener noreferrer" }, h("button", { type: "button" }, "Open on Instagram ↗")),
-      h("button", { class: "ghost", type: "button", onclick: () => reprocess(d.id) }, "Reprocess")),
-    d.status === "NEEDS_MANUAL_INPUT" && h("p", { class: "notice" },
-      `🙋 ${HELP_REASONS[d.fetch_status || "not_attempted"] || "Not enough information"}. ` +
-      "Lore didn't guess. Open it on Instagram; if it matters to you, attach a screenshot or " +
-      "screen recording (scripts/add_media.py) and press Reprocess."),
-    foundChips(d.found),
-    d.summary && section("Summary", h("p", {}, d.summary)),
-    section("Key takeaways", list(x.key_takeaways)),
+  const x = d.extraction || {};
+  const info = x.extracted_information || {}; // legacy shape
+  const list = (arr) => arr?.length > 0 ? h("ul", {}, arr.map((t) => h("li", {}, t))) : null;
+  const legacy = [
     info.places?.length > 0 && section("Places", table(["Name", "Type", "Location", "Notes", "Evidence"],
       info.places.map((p) => [p.name, p.place_type, p.location, p.notes, ev(p.evidence)]))),
     info.books?.length > 0 && section("Books", table(["Title", "Author", "Why", "Evidence"],
       info.books.map((b) => [b.title, b.author, b.reason, ev(b.evidence)]))),
-    info.products?.length > 0 && section("Products", table(["Name", "Brand", "Price", "Evidence"],
-      info.products.map((p) => [p.name, p.brand, p.price, ev(p.evidence)]))),
-    info.films_and_shows?.length > 0 && section("Films & shows", table(["Title", "Notes", "Evidence"],
-      info.films_and_shows.map((f) => [f.name, f.description, ev(f.evidence)]))),
-    info.tools?.length > 0 && section("Tools", table(["Name", "Notes", "Evidence"],
-      info.tools.map((t) => [t.name, t.description, ev(t.evidence)]))),
-    info.recipe && section("Recipe", h("b", {}, info.recipe.name || ""),
-      list(info.recipe.ingredients), list(info.recipe.steps)),
-    section("Tips from the post", list(info.tips)),
-    d.tags?.length > 0 && section("Tags", h("div", { class: "chips" }, d.tags.map((t) => h("span", { class: "chip" }, t)))),
-    d.caption && section("Original caption", h("div", { class: "caption" }, d.caption)),
-    d.media.on_screen_text && section("On-screen text (OCR)", h("div", { class: "caption" }, d.media.on_screen_text)),
-    d.media.transcript && section("Spoken transcript", h("div", { class: "caption" }, d.media.transcript)),
-    section("Where you saved / received it", table(["Source", "Name", "Sender", "When"],
-      d.sources.map((s) => [SOURCE_LABELS[s.type] || s.type, s.name, s.sender, fmtDate(s.captured_at)]))),
-    d.job && section("Processing", table(["Status", "Stage", "Attempts", "Finished", "Error"],
-      [[d.job.status, d.job.stage, `${d.job.attempts}/${d.job.max_attempts}`, fmtDate(d.job.completed_at), d.job.error]])),
-    d.extraction_meta && h("p", { class: "muted small" },
-      `Extracted from ${d.extraction_meta.source} by ${d.extraction_meta.model} ` +
-      `(${d.extraction_meta.prompt_version}) on ${fmtDate(d.extraction_meta.extracted_at)}`));
+  ];
+  const visibilityBtn = d.hidden
+    ? h("button", { class: "ghost", type: "button", onclick: () => setVisibility(d.id, "keep") }, "↩︎ Restore")
+    : h("button", { class: "ghost", type: "button", onclick: () => setVisibility(d.id, "hide") }, "Hide");
+  const body = h("div", {},
+    h("h2", {}, d.title || "Untitled (not processed yet)"),
+    h("div", { class: "chips" },
+      d.hidden ? h("span", { class: "badge hidden-badge" }, `Hidden · ${HIDE_LABELS[d.hidden_reason] || d.hidden_reason}`)
+        : statusBadge(d.status, d.last_processed_at),
+      d.primary_category && h("span", { class: "chip cat" }, `${CATEGORY_EMOJI[d.primary_category] || ""} ${cat(d.primary_category)}`.trim()),
+      x.subtopic && h("span", { class: "chip" }, x.subtopic),
+      x.information_sufficient === false && h("span", { class: "badge ev-inferred" }, "low confidence")),
+    h("div", { class: "actions" },
+      h("a", { href: d.url, target: "_blank", rel: "noopener noreferrer" }, h("button", { type: "button" }, "Open on Instagram ↗")),
+      visibilityBtn,
+      h("button", { class: "ghost", type: "button", onclick: () => reprocess(d.id) }, "Reprocess")),
+    x.gist ? h("p", { class: "gist" }, x.gist) : null,
+    ...factsFor(x), ...legacy,
+    section("Key points", list(x.key_takeaways)),
+    section("Tips from the post", list(x.tips || info.tips)),
+    h("details", { class: "source" }, h("summary", {}, "Show source (summary, caption, transcript, where it came from)"),
+      d.summary && section("AI summary", h("p", {}, d.summary)),
+      d.caption && section("Original caption", h("div", { class: "caption" }, d.caption)),
+      d.media.on_screen_text && section("On-screen text (OCR)", h("div", { class: "caption" }, d.media.on_screen_text)),
+      d.media.transcript && section("Spoken transcript", h("div", { class: "caption" }, d.media.transcript)),
+      d.tags?.length > 0 && section("Tags", h("div", { class: "chips" }, d.tags.map((t) => h("span", { class: "chip" }, `#${t}`)))),
+      section("Where you saved / received it", table(["Source", "Name", "Sender", "When"],
+        d.sources.map((s) => [SOURCE_LABELS[s.type] || s.type, s.name, s.sender, fmtDate(s.captured_at)]))),
+      d.job && section("Processing", table(["Status", "Stage", "Attempts", "Finished", "Error"],
+        [[d.job.status, d.job.stage, `${d.job.attempts}/${d.job.max_attempts}`, fmtDate(d.job.completed_at), d.job.error]])),
+      d.extraction_meta && h("p", { class: "muted small" },
+        `Extracted from ${d.extraction_meta.source} by ${d.extraction_meta.model} (${d.extraction_meta.prompt_version}) on ${fmtDate(d.extraction_meta.extracted_at)}`)));
   $("#drawer-body").replaceChildren(body);
   $("#drawer").hidden = false; $("#scrim").hidden = false; $("#drawer-close").focus();
+}
+async function setVisibility(id, choice) {
+  const r = await api(`/content/${id}/visibility`, { method: "POST", body: JSON.stringify({ choice }) });
+  toast(r.hidden ? "Hidden. Find it under All posts → Hidden posts." : "Restored to your useful posts.");
+  openDetail(id);
 }
 function closeDrawer() { $("#drawer").hidden = true; $("#scrim").hidden = true; }
 $("#drawer-close").addEventListener("click", closeDrawer);
@@ -372,6 +455,54 @@ async function loadPlaces() {
       p.content_title || "post")))));
 }
 $("#places-q").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(loadPlaces, 250); });
+
+// ---------- explore (drill-down) ----------
+const EXPLORE = {
+  eat: { title: "🍽️ Eat & drink", base: ["type=eat_drink"],
+    help: "Cafés, restaurants, bars and food spots from your posts. Pick a city, zone or cuisine to narrow down.",
+    groups: ["venue.city", "venue.zone", "venue.area", "venue_type", "cuisine", "good_for", "vibe", "price_level", "origin"] },
+  spots: { title: "🏙️ Places to visit", base: ["type=place"],
+    help: "Shops, markets, bookstores, museums, parks, studios and other non-food places.",
+    groups: ["place.city", "place.zone", "place.area", "place_kind", "good_for", "vibe", "origin"] },
+  trips: { title: "🗺️ Trip ideas", base: ["type=trip"],
+    help: "Destinations, treks and stays. Start with India or abroad, then a state or trip type.",
+    groups: ["trip_scope", "trip.state", "trip.country", "trip_type", "terrain", "trek_difficulty", "stay", "origin"] },
+};
+const explore = { view: null, filters: [], offset: 0 };
+async function loadExplore() {
+  const cfg = EXPLORE[explore.view];
+  const all = [...cfg.base, ...explore.filters];
+  const qs = (extra) => { const p = new URLSearchParams(); all.forEach((f) => p.append("facet", f)); extra(p); return p; };
+  const [counts, list] = await Promise.all([
+    api(`/facet-values?${qs((p) => cfg.groups.forEach((g) => p.append("name", g)))}`),
+    api(`/content?${qs((p) => { p.set("limit", PAGE); p.set("offset", explore.offset); p.set("sort", "processed"); })}`),
+  ]);
+  $("#explore-title").textContent = cfg.title;
+  $("#explore-help").textContent = cfg.help;
+  $("#explore-crumbs").replaceChildren(...explore.filters.map((f) => {
+    const [name, value] = f.split("=");
+    return h("button", { class: "chip", type: "button", title: "Remove filter",
+      onclick: () => { explore.filters = explore.filters.filter((x) => x !== f); explore.offset = 0; loadExplore(); } },
+      `${FACET_LABELS[name] || name}: ${pretty(value)} ✕`);
+  }), ...(explore.filters.length ? [] : [h("span", { class: "muted small" }, "No filters yet: choose from the left.")]));
+  $("#explore-facets").replaceChildren(...cfg.groups.flatMap((g) => {
+    const options = (counts[g] || []).filter((o) => !explore.filters.includes(`${g}=${o.value}`));
+    if (!options.length) return [];
+    return [h("div", { class: "facet-group" }, h("h4", {}, FACET_LABELS[g] || g),
+      options.slice(0, 12).map((o) => h("button", { class: "facet-opt", type: "button",
+        onclick: () => { explore.filters.push(`${g}=${o.value}`); explore.offset = 0; loadExplore(); } },
+        h("span", {}, pretty(o.value)), h("span", { class: "c" }, o.count))))];
+  }));
+  $("#explore-count").textContent = `${list.total.toLocaleString()} post${list.total === 1 ? "" : "s"}`;
+  const pages = Math.max(1, Math.ceil(list.total / PAGE));
+  $("#explore-page").textContent = `${Math.floor(explore.offset / PAGE) + 1} / ${pages}`;
+  $("#explore-prev").disabled = explore.offset === 0;
+  $("#explore-next").disabled = explore.offset + PAGE >= list.total;
+  $("#explore-list").replaceChildren(...(list.items.length ? list.items.map(itemCard)
+    : [h("p", { class: "muted" }, "Nothing here yet. More appears as posts are reclassified.")]));
+}
+$("#explore-prev").addEventListener("click", () => { explore.offset = Math.max(0, explore.offset - PAGE); loadExplore(); });
+$("#explore-next").addEventListener("click", () => { explore.offset += PAGE; loadExplore(); });
 
 // ---------- start ----------
 async function boot() {

@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -133,3 +134,21 @@ def get_media(content_id: uuid.UUID, session: Session = Depends(get_session)) ->
         "ocr_frames": session.scalar(select(func.count()).where(
             OcrText.content_id == content_id)),
     }
+
+
+class VisibilityRequest(BaseModel):
+    choice: str | None = Field(None, pattern="^(keep|hide)$")  # null = automatic
+
+
+@router.post("/{content_id}/visibility")
+def set_visibility(content_id: uuid.UUID, req: VisibilityRequest,
+                   session: Session = Depends(get_session)) -> dict[str, Any]:
+    from app.processing.classification.archive import set_override
+
+    item = session.get(ContentItem, content_id)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Content not found")
+    set_override(item, req.choice, (item.extracted_data or {}).get("caption_extraction"))
+    session.commit()
+    return {"content_id": str(item.id), "hidden": item.archived_at is not None,
+            "reason": item.archive_reason, "override": item.visibility_override}

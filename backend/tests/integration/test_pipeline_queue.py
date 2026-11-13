@@ -89,7 +89,7 @@ def test_happy_path_completes_and_records_stages(session_factory, runner_for):
     cid = _item(session_factory)
     job = _enqueue(session_factory, cid).job_id
     out = runner_for(Providers(json.dumps(VALID))).run(job)
-    assert out["status"] == "completed" and out["category"] == "travel"
+    assert out["status"] == "completed" and out["category"] == "trip"
     j = _job(session_factory, job)
     assert (j.status, j.stage, j.runner_id) == ("completed", "COMPLETED", None)
     assert j.result["sources"] == ["caption"] and j.result["information_sufficient"] is True
@@ -236,9 +236,19 @@ def test_api_enqueue_reprocess_stats(session_factory, runner_for, tmp_path):
         assert c.post("/api/v1/processing/enqueue", headers=h,
                       json={"limit": 10}).json()["selected"] == 1  # only items without a job
         stats = c.get("/api/v1/stats", headers=h).json()
-        assert stats["jobs_by_status"] == {"completed": 3} and stats["categories"]["travel"] == 3
+        assert stats["jobs_by_status"] == {"completed": 3} and stats["categories"]["trip"] == 3
         cid = c.get("/api/v1/processing/jobs", headers=h).json()[0]["content_id"]
         rp = c.post(f"/api/v1/content/{cid}/reprocess", headers=h).json()
         assert rp["job"]["status"] == "completed" and rp["already_active"] is False
         assert c.post(f"/api/v1/content/{uuid.uuid4()}/reprocess", headers=h).status_code == 404
         assert c.get("/api/v1/stats").status_code == 401
+
+
+def test_long_backlog_is_not_redispatched_while_broker_has_messages(session_factory):
+    job = _enqueue(session_factory, _item(session_factory)).job_id
+    with session_factory() as s:
+        s.get(ProcessingJob, job).dispatched_at = q.now() - timedelta(days=1)
+        s.commit()
+        kw = dict(stale_after=timedelta(minutes=10), redispatch_after=timedelta(hours=6))
+        assert q.due_jobs(s, broker_backlog=500, **kw) == []      # still in the queue: wait
+        assert q.due_jobs(s, broker_backlog=0, **kw) == [job]     # queue empty: really lost

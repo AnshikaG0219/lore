@@ -232,3 +232,68 @@ curl -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
   localhost:8000/api/v1/processing/enqueue
 ```
 Fetching is paced (one request per 8s) and pauses for 30 minutes if Instagram pushes back.
+
+### Use Lore from Claude Desktop on this machine
+
+Claude Desktop can launch Lore's MCP server directly (stdio: no network, no key). In
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "lore": {
+      "command": "/ABSOLUTE/PATH/backend/.venv/bin/python",
+      "args": ["-m", "app.mcp_server", "--stdio"],
+      "env": { "PYTHONPATH": "/ABSOLUTE/PATH/backend",
+               "LORE_DATABASE_URL": "postgresql+psycopg://lore:lore@localhost:5433/lore" }
+    }
+  }
+}
+```
+Restart Claude Desktop. Lore's database must be running (`docker compose up -d postgres`).
+(On corporate laptops `npx mcp-remote` may fail to download through the internal npm
+registry; the stdio setup above needs no Node.js.)
+
+### Use Lore from Claude on another machine (e.g. to sync Notion)
+
+**Same Wi-Fi (simplest):** set `LORE_MCP_ALLOWED_HOSTS=<this-mac>.local,<this-mac-IP>`
+(`scutil --get LocalHostName`, `ipconfig getifaddr en0`), run `docker compose up -d mcp`, and use
+`http://<this-mac>.local:8765/mcp` in the Claude Desktop config below. Traffic on a local
+network is plain HTTP: use it only on your own home Wi-Fi, never on office/café/shared Wi-Fi
+(the key could be read by others on the network). If macOS asks to allow incoming connections
+for Docker, allow it. **Away from home:** use Tailscale (below), or **ngrok** if VPN/security software blocks the
+other options: `ngrok http 8765 --host-header=rewrite`, then use the `https://…ngrok-free.dev/mcp`
+URL in the config (drop `--allow-http`). This makes the server reachable from the internet,
+protected by `LORE_MCP_KEY` (keep it secret; rotate it if leaked). Stop ngrok when not syncing.
+
+
+Lore runs an MCP server (`mcp` service, port 8765) that another machine's Claude Desktop can use
+next to its Notion connector. Reach it privately with **Tailscale**; never expose it publicly.
+
+**On this Mac (where Lore runs)**
+1. Install Tailscale (`brew install --cask tailscale`), open it, sign in. Note this Mac's name,
+   e.g. `lore-mac.tail1234.ts.net` (MagicDNS) or its `100.x.y.z` address.
+2. In `.env`: `LORE_MCP_ALLOWED_HOSTS=lore-mac.tail1234.ts.net,100.x.y.z` (`LORE_MCP_KEY` is
+   generated with `openssl rand -hex 32`). Then `docker compose up -d mcp`.
+
+**On the other machine**
+1. Install Tailscale with the same account. Install Node.js (for `npx`).
+2. Claude Desktop → Settings → Developer → Edit Config (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "lore": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://lore-mac.tail1234.ts.net:8765/mcp",
+               "--allow-http", "--header", "Authorization:${LORE_AUTH}"],
+      "env": { "LORE_AUTH": "Bearer <value of LORE_MCP_KEY>" }
+    }
+  }
+}
+```
+3. Restart Claude Desktop. Ask: *"Use the Lore 'Sync Lore to Notion' prompt"* or e.g.
+   *"Find cafés in South Delhi in Lore and add them to my Notion"*.
+
+Tools: `overview` (start here: every category with counts and sub-groups), `list_category`
+(every post in a category, paged; `compact` one-liners or `full` details), `search_posts`,
+`get_post`, `facet_values`, `posts_to_sync`, `mark_synced`. Resource `lore://category/{type}`
+returns a whole category as Markdown. Prompt: *Sync Lore to Notion*.

@@ -229,3 +229,33 @@ Instagram overlays and subtitles are usually white text over photos/video. Plain
 nothing on a real quote post. Each image is now OCR'd twice (plain greyscale, and bright pixels
 thresholded to black-on-white) and the more confident result is kept. The engine name is versioned
 (`tesseract-eng+hin-v2`) so cached results from v1 are recomputed.
+
+## ADR-025: Classification v4/v5 — post types, type-specific facets, gazetteer, auto-hide
+Post type (eat_drink, place, trip, property, job, recommendations, how_to, shopping, event,
+thought, fun, other) + topic + per-type facets. The model copies locations as written; the
+gazetteer (code) maps neighbourhood → Delhi zone / NCR city and destination → state/country, so
+groupings are consistent and can be rebuilt without AI (`scripts/rebuild_facets.py`). Facets
+are stored in `content_facets` for drill-down. Posts that are fun, thoughts/quotes, or unclear
+*with no concrete facts* are hidden (`archived_at`), never deleted. A user keep/hide always
+overrides the rule. Each post gets a factual one-line `gist`; the dashboard shows facts first,
+with the source behind "Show source".
+
+## ADR-026: MCP server for assistants on other machines (Notion sync via Claude Desktop)
+The user's Notion connection lives in Claude Desktop on another machine. Instead of building
+Notion sync into Lore, Lore exposes an MCP server (`app/mcp_server.py`, MCP Python SDK 2.x,
+streamable HTTP on :8765) with `search_posts`, `get_post`, `facet_values`, `posts_to_sync`,
+`mark_synced` and a `sync_to_notion` prompt. Claude reads facts from Lore and writes Notion with
+its own connector. `notion_page_id` / `notion_synced_at` make sync incremental and duplicate-free.
+**Access:** a separate bearer key (`LORE_MCP_KEY`). The tools can only read posts and record
+sync status. Transport security (DNS-rebinding protection) allows only configured hosts.
+**Network:** Tailscale (private), never the public internet. Claude Desktop's *Connectors* are
+contacted from Anthropic's cloud and can't reach a tailnet, so the other machine runs
+`mcp-remote` locally (stdio bridge) to reach `http://<tailscale-name>:8765/mcp`.
+**Same-Wi-Fi alternative (user's choice, 2026-11-13):** connect over the home LAN via
+`<mac>.local`; allowed hosts restricted to that name and IP. LAN traffic is unencrypted, so use
+it only on a trusted home network; Tailscale remains the option for anywhere else.
+**ngrok alternative (user's choice, 2026-11-13):** GlobalProtect/CrowdStrike on the work Mac
+blocked LAN access, so the server is published with `ngrok http 8765 --host-header=rewrite`
+(HTTPS). It's publicly reachable while running; protection is the 256-bit bearer key and the
+narrow tool set. Run the tunnel only while syncing.
+**Trade-off:** sync only runs while this Mac is awake and Lore is running.

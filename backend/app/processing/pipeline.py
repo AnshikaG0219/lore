@@ -130,7 +130,10 @@ class PipelineRunner:
             has_media = session.scalar(select(MediaAsset.id).where(
                 MediaAsset.content_id == content_id).limit(1)) is not None
             state = dict((item.extracted_data or {}).get(FETCH_KEY) or {})
-            if has_media or state.get("status") in FETCH_FINAL or \
+            previous = (item.extracted_data or {}).get(EXTRACTION_KEY) or {}
+            # Only download when it can help: never for posts the caption already explains.
+            already_understood = previous.get("information_sufficient") is True
+            if has_media or already_understood or state.get("status") in FETCH_FINAL or \
                     (state.get("status") == "error"
                      and state.get("attempts", 0) >= self.max_fetch_errors):
                 return None
@@ -225,6 +228,9 @@ class PipelineRunner:
             inp = build_input(session, item)
             base = {"media": media}
             if inp is None:
+                from app.processing.classification.archive import apply_visibility
+
+                apply_visibility(item, {"information_sufficient": False})
                 q.finish(session, job_id, token, q.JobStatus.NEEDS_MANUAL_INPUT,
                          content_status=PS.NEEDS_MANUAL_INPUT,
                          result={**base, "reason": "no caption or media text"})

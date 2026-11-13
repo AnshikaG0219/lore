@@ -78,6 +78,21 @@ services:
     stop_grace_period: 60s
     restart: unless-stopped
 
+  mcp:
+    <<: *backend
+    # Lore MCP server for assistants on your other devices (ADR-026). Reach it over a private
+    # network such as Tailscale; never expose port 8765 to the internet.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      LORE_DATABASE_URL: postgresql+psycopg://lore:lore@postgres:5432/lore
+      LORE_MCP_HOST: 0.0.0.0
+    ports:
+      - "${LORE_MCP_HOST_PORT:-8765}:8765"
+    command: ["python", "-m", "app.mcp_server"]
+    restart: unless-stopped
+
   pipeline-worker:
     <<: *backend
     # Opt-in: needs LORE_COPILOT_GITHUB_TOKEN (or run the pipeline worker on the host).

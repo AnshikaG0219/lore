@@ -57,6 +57,12 @@ class ContentItem(UUIDPk, Timestamps, Base):
     extraction_confidence: Mapped[float | None] = mapped_column(Float)
     notion_page_id: Mapped[str | None] = mapped_column(String(64), index=True)
     notion_sync_status: Mapped[str] = mapped_column(String(32), default=NotionSyncStatus.NOT_SYNCED)
+    notion_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Hidden from browsing/search/counts (never deleted). Reason: fun | thought | unclear | manual.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    archive_reason: Mapped[str | None] = mapped_column(String(32))
+    # The user's explicit choice ("keep" | "hide") always overrides the automatic rule.
+    visibility_override: Mapped[str | None] = mapped_column(String(8))
 
     sources: Mapped[list[ContentSource]] = relationship(
         back_populates="content", cascade="all, delete-orphan"
@@ -254,3 +260,17 @@ class OcrText(UUIDPk, Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     engine: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ContentFacet(UUIDPk, Base):
+    """Normalised filter values per item (type, topic, city, zone, cuisine, trip_type…)."""
+
+    __tablename__ = "content_facets"
+    __table_args__ = (UniqueConstraint("content_id", "facet", "value"),
+                      Index("ix_content_facets_facet_value", "facet", "value"))
+
+    content_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_items.id", ondelete="CASCADE"), index=True
+    )
+    facet: Mapped[str] = mapped_column(String(64))
+    value: Mapped[str] = mapped_column(String(200))
