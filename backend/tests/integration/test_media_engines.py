@@ -72,3 +72,26 @@ def test_image_ocr_and_video_transcription(session_factory, engines, item_id, tm
         assert s.query(OcrText).filter(OcrText.frame_time >= 0).count() >= 5
         video_asset = s.get(MediaAsset, ids[1])
         assert video_asset.meta["probe"]["has_audio"] is True
+
+
+def test_white_text_over_photo_is_read(tmp_path):
+    """Instagram-style white subtitle on a busy background (plain Tesseract returns nothing)."""
+    import random
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    from tests.media_fixtures import FONT
+
+    random.seed(1)
+    img = Image.new("RGB", (1080, 740))
+    px = img.load()
+    for x in range(1080):
+        for y in range(740):
+            v = random.randint(40, 170)
+            px[x, y] = (v // 2, v // 2 + 30, v)  # noisy sea-like background
+    ImageDraw.Draw(img).text((180, 560), "Perhaps you're a slave to your own idea",
+                             font=ImageFont.truetype(FONT, 40), fill=(255, 255, 255))
+    path = tmp_path / "quote.jpg"
+    img.save(path, quality=90)
+    text = TesseractOcr("eng").read(path).text.lower()
+    assert "slave to your own idea" in text, text

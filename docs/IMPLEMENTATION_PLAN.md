@@ -80,7 +80,9 @@ Phase 1 parsing is verified, and the durable worker is done (ADR-016/017). **Pha
 | Video transcription (faster-whisper small) + frame OCR | ✅ | Real-engine test + Docker media-worker e2e |
 | Extraction from caption + on-screen text + transcript | ✅ | e2e: caption without titles + video → 3 books with authors, all explicit |
 | Vision-model image understanding | ⏳ | OCR covers text; non-text images (food, places) still need it |
-| Public metadata retrieval | ⏳ | |
+| Public media fetching (yt-dlp, logged out) | ✅ | ADR-023; FETCHING stage, Redis pacing + circuit breaker; feasibility 5/5 |
+| OCR bright-text pass | ✅ | ADR-024 |
+| Vision model for photos without text | ⏳ | Remaining gap after fetching |
 
 **Trial findings (10 items from 5 collections):** no fabricated entities. Thin captions were
 correctly flagged `information_sufficient=false` with confidence 0.4. Explicit data extracted well

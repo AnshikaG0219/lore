@@ -57,8 +57,15 @@ Group vs direct detection uses `participants > 2` (in the real export this match
   tables are deferred to the phases that use them.
 
 ## Media, OCR and transcription
-- **Saved-post media is not in the Instagram export**, and the app does not download it from
-  Instagram. Media must be uploaded by the user (screen recordings, screenshots, saved videos).
+- **Saved-post media is not in the Instagram export.** With `LORE_MEDIA_FETCH_ENABLED=true` the
+  pipeline downloads *public* posts logged out with yt-dlp (ADR-023). Private posts, deleted posts,
+  and anything behind Instagram's login wall still need a manual upload.
+- yt-dlp breaks when Instagram changes its site. Run `pip install -U yt-dlp` if fetches start
+  failing with `error`. If Instagram blocks logged-out access, the circuit breaker pauses fetching
+  (30 min) and affected items stay `deferred` until re-queued.
+- **Photos without text** (products, food, places) have no OCR text and no audio, so they still end
+  as `NEEDS_MANUAL_INPUT` unless the caption is sufficient. Understanding them needs a vision model
+  (not yet implemented).
 - Whisper mis-spells rare proper nouns (e.g. "Pangong" → "Pangond"). Extraction prefers on-screen
   text for names, but spoken-only names may be wrong.
 - Tesseract struggles with decorative fonts, curved text and text on busy photos. It doesn't

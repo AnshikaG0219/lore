@@ -198,3 +198,34 @@ are restricted to same-origin or `https://*.instagram.com`. Strict CSP: `default
 inline script or style attributes (bar widths are set via CSSOM), `frame-ancestors 'none'`,
 `nosniff`, `no-referrer`. This is suitable for local, single-user use. Real session auth comes
 with Phase 5 (PRD §13).
+
+## ADR-023: Fetch public Instagram media with yt-dlp, logged out (amends PRD §4.1, §13, §19)
+**Context:** After the full caption run, 1,828 of 2,579 items were `NEEDS_MANUAL_INPUT`. 96% were
+posts friends shared in chats, where the export holds only the link and a short preview. Official
+routes don't provide other people's media (export: none; Graph API: own media only; oEmbed: no
+thumbnails since Nov 2025). The user explicitly decided (2026-11-09) to allow logged-out
+downloading of public posts for this personal tool.
+**Decision:**
+- New pipeline stage `FETCHING` (before media processing), off by default
+  (`LORE_MEDIA_FETCH_ENABLED=true` to enable).
+- **yt-dlp, logged out only:** no cookies, browser sessions, netrc or credentials, ever. Videos
+  (Reels) are downloaded at ≤720p. Photo/carousel posts are read via yt-dlp metadata
+  (`ignore_no_formats_error`) and each slide's largest image is downloaded (full resolution).
+- **Polite and self-limiting:** one request per 8s across all workers (Redis slot). Any block
+  (rate limit / login wall / 429) trips a **circuit breaker** that pauses all fetching for 30 min.
+  Paused items continue without media (`deferred`) and can be retried later.
+- Outcomes are stored per item in `extracted_data.media_fetch`. `fetched`, `unavailable` and
+  `no_media` are final (never refetched). `error` is retried up to 3 times. Fetched media is stored
+  locally like uploads (`media_assets.source = "yt-dlp"`). Only derived text is sent to the LLM.
+- The post's own caption replaces the export's shorter chat preview (`share_text`).
+- gallery-dl (login wall) and the embed page (no media in HTML) were tested and rejected.
+**Risks accepted:** this is against Instagram's Terms of Use; yt-dlp's Instagram support can break
+when Instagram changes (keep yt-dlp updated); the logged-out success rate may drop over time.
+**Feasibility (5 saved posts):** 5/5 fetched (3 Reels, 1 photo, 1 nine-slide carousel). The Reels
+went from caption-only to completed extractions (e.g. 0 → 5 books with author).
+
+## ADR-024: OCR reads bright text with a second pass
+Instagram overlays and subtitles are usually white text over photos/video. Plain Tesseract returned
+nothing on a real quote post. Each image is now OCR'd twice (plain greyscale, and bright pixels
+thresholded to black-on-white) and the more confident result is kept. The engine name is versioned
+(`tesseract-eng+hin-v2`) so cached results from v1 are recomputed.

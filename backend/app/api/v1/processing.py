@@ -32,6 +32,8 @@ class EnqueueRequest(BaseModel):
     import_batch_id: uuid.UUID | None = None
     only_new: bool = True
     require_caption: bool = False
+    status: str | None = None  # e.g. NEEDS_MANUAL_INPUT (use with only_new=false)
+    saved_only: bool = False   # only posts you saved yourself (not chat shares)
     priority: int = Field(default=100, ge=0, le=1000)
 
 
@@ -41,7 +43,8 @@ def enqueue_many(req: EnqueueRequest, session: Session = Depends(get_session),
                  settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     ids = select_for_processing(session, limit=req.limit, collection=req.collection,
                                 only_new=req.only_new, import_batch_id=req.import_batch_id,
-                                require_caption=req.require_caption)
+                                require_caption=req.require_caption, status=req.status,
+                                saved_only=req.saved_only)
     jobs = [queue.enqueue(session, cid, reason="bulk", force=not req.only_new,
                           priority=req.priority, max_attempts=settings.pipeline_max_attempts)
             for cid in ids]

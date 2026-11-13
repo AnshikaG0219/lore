@@ -362,6 +362,9 @@ Do not use the user's Instagram password, session cookies or browser credentials
 
 Do not bypass login restrictions, access controls, rate limits or platform protections.
 
+> **Amended 2026-11-09 (ADR-023):** the user approved fetching *public* posts with yt-dlp *logged out* (no credentials or cookies), rate-limited with a circuit breaker. Logging in, using session cookies, CAPTCHA bypass and private-account access remain prohibited.
+
+
 For inaccessible posts, create a record with status `needs_manual_input` and provide an interface to upload screenshots, images or video files.
 
 The application must never silently discard a captured URL because its content cannot be retrieved.
@@ -1669,6 +1672,9 @@ Follow these rules:
 21. Do not fabricate Instagram API capabilities.
 22. Verify actual Instagram export structures using supplied fixtures.
 23. Do not use browser automation or Instagram scraping as a workaround for restricted access.
+
+> **Amended 2026-11-09 (ADR-023):** the user approved fetching *public* posts with yt-dlp *logged out* (no credentials or cookies), rate-limited with a circuit breaker. Logging in, using session cookies, CAPTCHA bypass and private-account access remain prohibited.
+
 24. Never invent extracted information.
 25. Ask for clarification only when an essential implementation decision cannot be made safely.
 
